@@ -27,7 +27,7 @@ blDictU = {}
 sourceDict = {}
 lowestFSky = 1.0e30
 speedOfLight = 2.997925e8
-maxScan = 100
+maxScan = 100000000
 
 def normalize0to360(angle):
     while angle >= 360.0:
@@ -247,9 +247,9 @@ read(dataSet)
 visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
 visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
 print 'len(visMap) = ', len(visMap)
-#for band in bandList:
-for band in range(1):
-    for sb in range(1):
+for band in bandList:
+#for band in range(1):
+    for sb in range(2):
         if sb == 0:
             sideBand = 'Lower'
             blDict = blDictL
@@ -434,10 +434,10 @@ for band in range(1):
         ###
         ### Create the FREQUENCY table
         ###
-        c1  = pyfits.Column(name='FREQ_ID',         format='1J',  array=[1]  )
+        c1  = pyfits.Column(name='FREQID',         format='1J',  array=[1]  )
         c2  = pyfits.Column(name='BANDFREQ',        format='D',   array=[0.0])
-        c3  = pyfits.Column(name='CH_WIDTH',        format='E' ,  array=[abs(spSmallDict[band][1])])
-        c4  = pyfits.Column(name='TOTAL_BANDWIDTH', format='1J',  array=[abs(spSmallDict[band][1])*float(spSmallDict[band][0])])
+        c3  = pyfits.Column(name='CH_WIDTH',        format='1E' ,  array=[abs(spSmallDict[band][1])])
+        c4  = pyfits.Column(name='TOTAL_BANDWIDTH', format='1E',  array=[abs(spSmallDict[band][1])*float(spSmallDict[band][0])])
         if sideBand == 'Upper':
              c5  = pyfits.Column(name='SIDEBAND',        format='1J',  array=[1] )
         else:
@@ -465,31 +465,34 @@ for band in range(1):
         levelsList = []
         polAList = []
         polBList = []
+        polCalAList = []
         for ant in range(1,9):
             timeList.append(0.0)
             timeIntList.append(1.0)
             arrayList.append(1)
             levelsList.append(2)
             polAList.append('L')
-            polBList.append('L')
+            polBList.append('R')
+            polCalAList.append([0.0, 0.0])
         c1  = pyfits.Column(name='TIME',          format='D',  array=timeList   )
         c2  = pyfits.Column(name='TIME_INTERVAL', format='E',  array=timeIntList)
         c3  = pyfits.Column(name='ANNAME',        format='8A', array=antNames   )
-        c4  = pyfits.Column(name='ANTENNA_NO',    format='8A', array=antNumList )
+        c4  = pyfits.Column(name='ANTENNA_NO',    format='J', array=antNumList )
         c5  = pyfits.Column(name='ARRAY',         format='J',  array=arrayList  )
         c6  = pyfits.Column(name='FREQID',        format='J',  array=arrayList  )
         c7  = pyfits.Column(name='NO_LEVELS',     format='J',  array=levelsList )
         c8  = pyfits.Column(name='POLTYA',        format='1A', array=polAList   )
         c9  = pyfits.Column(name='POLAA',         format='E',  array=timeList   )
-        c10 = pyfits.Column(name='POLCALA',       format='E',  array=timeList   )
+        c10 = pyfits.Column(name='POLCALA',       format='2E', array=polCalAList)
         c11 = pyfits.Column(name='POLTYB',        format='1A', array=polBList   )
         c12 = pyfits.Column(name='POLAB',         format='E',  array=timeList   )
-        c13 = pyfits.Column(name='POLCALB',       format='E',  array=timeList   )
+        c13 = pyfits.Column(name='POLCALB',       format='2E', array=polCalAList)
         coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13])
         antennaHDU = pyfits.new_table(coldefs)
         header = antennaHDU.header
         header.update('extname',  'ANTENNA')
-        header.update('nopcal',   0)
+        header.update('nopcal',   2)
+        header.update('poltype', 'APPROX')
 
         header.update('tabrev',   1)
         header.update('obscode',  ' ');
@@ -518,8 +521,9 @@ for band in range(1):
         sourceList   = []
         freqList     = []
         intList      = []
-        weightList   = []
         matrixList   = []
+        blKeysSorted = sorted(blDict)
+        blPos = 0
         while (scanOffset < len(visMap)) and (scanNo < maxScan):
             foundBlEntry = False
             foundSpEntry = False
@@ -527,8 +531,10 @@ for band in range(1):
             scanNo  = makeInt(visMap[scanOffset:scanOffset+4],   4)
             recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
             if scanNo > 0:
-                for bl in blDict:
+                for bl in blKeysSorted[blPos:]:
+#                    print 'bl = ', bl, ' blPos = ', blPos, ' check ', blKeysSorted[blPos]
                     if blDict[bl][0] == scanNo:
+#                        print 'Matches! ', scanNo, nBlFound
                         foundBlEntry = True
                         nBlFound += 1
                         if (band, bl) in spBigDict:
@@ -544,7 +550,6 @@ for band in range(1):
                             sourceList.append(inDict[scanNo][14])
                             freqList.append(1)
                             intList.append(inDict[scanNo][12])
-                            weightList.append(spBigDict[(band, bl)][1])
                             dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
                             scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
                             if scaleExp > 2**15:
@@ -556,9 +561,11 @@ for band in range(1):
                                 imag = float(ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8))*scale
                                 matrixEntry.append(real)
                                 matrixEntry.append(imag)
+                                matrixEntry.append(spBigDict[(band, bl)][1])
                             matrixList.append(matrixEntry)
                         if nBlFound == 28:
                             break
+                    blPos += 1
                 if (not foundBlEntry) or (not foundSpEntry):
                     print 'Something not found scanNo = %d, band = %d, foundBl = %d, foundSp = %d' % (scanNo, band, foundBlEntry, foundSpEntry)
                     sys.exit(0)
@@ -567,28 +574,26 @@ for band in range(1):
         # We must loop through all the visibilities in the sch_read file, so first we
         # need to figure out how large each record is.
 
-        c12Format = '%dE' % (len(matrixEntry))
-        print 'Matrix format: ', c12Format
+        c10Format = '%dE' % (len(matrixEntry))
+        print 'Matrix format: ', c10Format
         c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
         c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
         c3  = pyfits.Column(name='WW',          format='1D',       array=wList       , unit='SECONDS')
         c4  = pyfits.Column(name='DATE',        format='1D',       array=jDList      , unit='DAYS'   )
         c5  = pyfits.Column(name='TIME',        format='1D',       array=timeList    , unit='DAYS'   )
         c6  = pyfits.Column(name='BASELINE',    format='1J',       array=baselineList                )
-        c7  = pyfits.Column(name='ARRAY',       format='1J',       array=arrayList                   )
-        c8  = pyfits.Column(name='SOURCE_ID',   format='1J',       array=sourceList                  )
-        c9  = pyfits.Column(name='FREQID',      format='1J',       array=freqList                    )
-        c10 = pyfits.Column(name='INTTIM',      format='1E',       array=intList     , unit='SECONDS')
-        c11 = pyfits.Column(name='WEIGHT',      format='1E',       array=weightList                  )
-        c12 = pyfits.Column(name='FLUX',        format=c12Format,  array=matrixList  , unit='UNCALIB')
-        coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12])
+        c7  = pyfits.Column(name='SOURCE_ID',   format='1J',       array=sourceList                  )
+        c8  = pyfits.Column(name='FREQID',      format='1J',       array=freqList                    )
+        c9  = pyfits.Column(name='INTTIM',      format='1E',       array=intList     , unit='SECONDS')
+        c10 = pyfits.Column(name='FLUX',        format=c10Format,  array=matrixList  , unit='UNCALIB')
+        coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
         uvDataHDU = pyfits.new_table(coldefs)
         header = uvDataHDU.header
         header.update('extname',  'UV_DATA'                                                          )
         header.update('nmatrix',  1,                          'Number of matrices'                   )
-        header.update('tmatx12',  'T'                                                                )
+        header.update('tmatx10',  'T'                                                                )
         header.update('maxis',    6,                          'Number of matix axes'                 )
-        header.update('maxis1',   2,                          'Number of data points on complex axis')
+        header.update('maxis1',   3,                          'Number of data points on complex axis')
         header.update('ctype1',   'COMPLEX',                  'Type of axis 1'                       )
         header.update('cdelt1',   1                                                                  )
         header.update('crval1',   1                                                                  )
