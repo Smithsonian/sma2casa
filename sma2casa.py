@@ -28,6 +28,8 @@ sourceDict = {}
 lowestFSky = 1.0e30
 speedOfLight = 2.997925e8
 maxScan = 100000000
+maxWeight = 0.01
+numberOfBaselines = 0
 
 def normalize0to360(angle):
     while angle >= 360.0:
@@ -65,7 +67,7 @@ def makeDouble(data):
 
 def read(dataDir):
     global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU, lowestFSky
-    global spSmallDict, spBigDict, sourceDict
+    global spSmallDict, spBigDict, sourceDict, maxWeight, numberOfBaselines
 
     # Check that the directory contains all the required files
     dirContents = os.listdir(dataDir)
@@ -127,6 +129,7 @@ def read(dataDir):
     data = f.read()
     inRecLen = 188
     nInRecords = len(data)/inRecLen
+    savedSourceInfo = True
     for rec in range(nInRecords):
         traid     =    makeInt(data[rec*inRecLen +   0:], 4)
         inhid     =    makeInt(data[rec*inRecLen +   4:], 4)
@@ -156,7 +159,18 @@ def read(dataDir):
         inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
                          rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size)
         if souid not in sourceDict:
-            sourceDict[souid] = (codesDict['source'][isource], rar, decr)
+            # This funny business with savedSourceInfo is a kludge - it keeps the source info from being
+            # taken from the first integration header, which usually still has the RA and Dec from the
+            # previous scan (and is therefore the header for a bad scan.   This kludge makes the code store
+            # the source info from the 2nd integration header, which should have the correct coordinates.
+            # but this is not guaranteed, so it should be fixed up later
+            if savedSourceInfo:
+                savedSourceInfo = False
+            else:
+                sourceDict[souid] = (codesDict['source'][isource], rar, decr)
+                savedSourceInfo = True
+        else:
+            savedSourceInfo = True
 
     ###
     ### Read in bl_read
@@ -166,6 +180,7 @@ def read(dataDir):
     fSize = os.path.getsize(dataDir+'/bl_read')
     blRecLen = 158-8
     nBlRecords = fSize/blRecLen
+    baselineList = []
     for rec in range(nBlRecords):
         if (rec % 10000) == 0:
             print '\t processing record %d of %d (%2.0f%% done)' % (rec, nBlRecords, 100.0*float(rec)/float(nBlRecords))
@@ -191,6 +206,9 @@ def read(dataDir):
             blsid     =    makeInt(data[ 56:], 4)
             ant1      =    makeInt(data[ 60:], 2)
             ant2      =    makeInt(data[ 62:], 2)
+            if (ant1, ant2) not in baselineList:
+                baselineList.append((ant1, ant2))
+                numberOfBaselines +=1
             # Put Tsys offsets here!
             if isb == 0:
                 blDictL[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
@@ -198,6 +216,7 @@ def read(dataDir):
             else:
                 blDictU[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
                                   blsid, ant1, ant2)
+    print numberOfBaselines, ' baselines seen in this data set.'
 
     ###
     ### Count the number of spectral bands
@@ -222,13 +241,15 @@ def read(dataDir):
             iband     =    makeInt(data[ 16:], 2)
             fsky      = makeDouble(data[ 36:])
             fres      =  makeFloat(data[ 44:])
-            wt        =  makeFloat(data[ 80:])
-            flags     =    makeInt(data[ 84:], 4)
+            wt        =  makeFloat(data[ 84:])
+            flags     =    makeInt(data[ 88:], 4)
             nch       =    makeInt(data[ 96:], 2)
             dataoff   =    makeInt(data[100:], 4)
             rfreq     = makeDouble(data[104:])
             if flags != 0:
                 wt = 0.0
+            if wt > maxWeight:
+                maxWeight = wt
             if fsky < lowestFSky:
                 lowestFSky = fsky
             spBigDict[(iband, blhid)] = (dataoff, wt)
@@ -247,8 +268,8 @@ read(dataSet)
 visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
 visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
 print 'len(visMap) = ', len(visMap)
-for band in bandList:
-#for band in range(1):
+#for band in bandList:
+for band in range(49):
     for sb in range(2):
         if sb == 0:
             sideBand = 'Lower'
@@ -532,9 +553,7 @@ for band in bandList:
             recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
             if scanNo > 0:
                 for bl in blKeysSorted[blPos:]:
-#                    print 'bl = ', bl, ' blPos = ', blPos, ' check ', blKeysSorted[blPos]
                     if blDict[bl][0] == scanNo:
-#                        print 'Matches! ', scanNo, nBlFound
                         foundBlEntry = True
                         nBlFound += 1
                         if (band, bl) in spBigDict:
@@ -552,18 +571,24 @@ for band in bandList:
                             intList.append(inDict[scanNo][12])
                             dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
                             scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
-                            if scaleExp > 2**15:
+                            if scaleExp > (2**15-1):
                                 scaleExp -= 2**16
                             scale = 2.0**scaleExp
                             dataoff += 2
+                            weight = spBigDict[(band, bl)][1]/maxWeight
                             for i in range(0, spSmallDict[band][0]):
-                                real = float(ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8))*scale
-                                imag = float(ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8))*scale
-                                matrixEntry.append(real)
-                                matrixEntry.append(imag)
-                                matrixEntry.append(spBigDict[(band, bl)][1])
+                                real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
+                                if real > (2**15-1):
+                                    real -= 2**16
+                                imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
+                                if imag > (2**15-1):
+                                    imag -= 2**16
+                                matrixEntry.append(float(real*scale))
+                                matrixEntry.append(float(-imag*scale))
+                                matrixEntry.append(weight)
+                                dataoff += 4
                             matrixList.append(matrixEntry)
-                        if nBlFound == 28:
+                        if nBlFound == numberOfBaselines:
                             break
                     blPos += 1
                 if (not foundBlEntry) or (not foundSpEntry):
