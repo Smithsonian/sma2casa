@@ -9,7 +9,7 @@ This file defines functions which will import SMA data directly into a CASA Meas
 import numpy as np
 import os, sys, struct, mmap, pyfits
 from astropy.time import Time
-from math import sin, cos, pi
+from math import sin, cos, pi, sqrt
 #import psyco
 #psyco.full()
 
@@ -23,7 +23,9 @@ antennas = {}
 codesDict = {}
 inDict = {}
 blDictL = {}
+blTsysDictL = {}
 blDictU = {}
+blTsysDictU = {}
 sourceDict = {}
 lowestFSky = 1.0e30
 speedOfLight = 2.997925e8
@@ -68,6 +70,7 @@ def makeDouble(data):
 def read(dataDir):
     global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU, lowestFSky
     global spSmallDict, spBigDict, sourceDict, maxWeight, numberOfBaselines
+    global blTsysDictL, blTsysDictU
 
     # Check that the directory contains all the required files
     dirContents = os.listdir(dataDir)
@@ -143,7 +146,7 @@ def read(dataDir):
         sx        = makeDouble(data[rec*inRecLen +  40:])
         sy        = makeDouble(data[rec*inRecLen +  48:])
         sz        = makeDouble(data[rec*inRecLen +  56:])
-        rinteg    =  makeFloat(data[rec*inRecLen +  60:])
+        rinteg    =  makeFloat(data[rec*inRecLen +  64:])
         proid     =    makeInt(data[rec*inRecLen +  68:], 4)
         souid     =    makeInt(data[rec*inRecLen +  72:], 4)
         isource   =    makeInt(data[rec*inRecLen +  76:], 2)
@@ -178,7 +181,7 @@ def read(dataDir):
     print 'Reading bl_read'
     f = open(dataDir+'/bl_read', 'rb')
     fSize = os.path.getsize(dataDir+'/bl_read')
-    blRecLen = 158-8
+    blRecLen = 158
     nBlRecords = fSize/blRecLen
     baselineList = []
     for rec in range(nBlRecords):
@@ -209,14 +212,33 @@ def read(dataDir):
             if (ant1, ant2) not in baselineList:
                 baselineList.append((ant1, ant2))
                 numberOfBaselines +=1
-            # Put Tsys offsets here!
+            ant1TsysOff =  makeInt(data[ 64:], 4)
+            ant2TsysOff =  makeInt(data[ 68:], 4)
             if isb == 0:
                 blDictL[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
-                                  blsid, ant1, ant2)
+                                  blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
             else:
                 blDictU[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
-                                  blsid, ant1, ant2)
+                                  blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
     print numberOfBaselines, ' baselines seen in this data set.'
+
+    ###
+    ### Pull the Tsys info out of tsys_read
+    ###
+    tsysFile = os.open(dataDir+'/tsys_read', os.O_RDONLY)
+    tsysMap = mmap.mmap(tsysFile, 0, prot=mmap.PROT_READ);
+    for bl in blDictL:
+        ant1Tsys4to6 = makeFloat(tsysMap[blDictL[bl][17]+12:blDictL[bl][17]+16])
+        ant1Tsys6to8 = makeFloat(tsysMap[blDictL[bl][17]+28:blDictL[bl][17]+32])
+        ant2Tsys4to6 = makeFloat(tsysMap[blDictL[bl][18]+12:blDictL[bl][18]+16])
+        ant2Tsys6to8 = makeFloat(tsysMap[blDictL[bl][18]+28:blDictL[bl][18]+32])
+        blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+    for bl in blDictU:
+        ant1Tsys4to6 = makeFloat(tsysMap[blDictU[bl][17]+16:blDictU[bl][17]+20])
+        ant1Tsys6to8 = makeFloat(tsysMap[blDictU[bl][17]+32:blDictU[bl][17]+36])
+        ant2Tsys4to6 = makeFloat(tsysMap[blDictU[bl][18]+16:blDictU[bl][18]+20])
+        ant2Tsys6to8 = makeFloat(tsysMap[blDictU[bl][18]+32:blDictU[bl][18]+36])
+        blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
 
     ###
     ### Count the number of spectral bands
@@ -261,22 +283,23 @@ def read(dataDir):
     nBands = len(bandList)
     bandList.sort()
 
-dataSet = '/sma/SMAusers/taco/SWARMTest/sma/rtdata/newFormat/mir_data/130307_08:57:53'
+dataSet = '/sma/SMAusers/taco/SWARMTest/sma/rtdata/newFormat/mir_data/130401_07:58:28'
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
 read(dataSet)
 visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
 visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
-print 'len(visMap) = ', len(visMap)
-#for band in bandList:
-for band in range(49):
+for band in bandList:
+#for band in range(49):
     for sb in range(2):
         if sb == 0:
             sideBand = 'Lower'
             blDict = blDictL
+            blTsysDict = blTsysDictL
         else:
             sideBand = 'Upper'
             blDict = blDictU
+            blTsysDict = blTsysDictU
         
         ###
         ### Make the Primary HDU
@@ -526,11 +549,87 @@ for band in range(49):
         header.update('ref_pixl', 1,                  'Reference pixel')
 
         ###
+        ### Create the SYSTEM_TEMPERATURE table
+        ###
+        blKeysSorted = sorted(blDict)
+        blPos = 0
+        scanDict = {}
+        antTsysDict = {}
+        inKeysSorted = sorted(inDict)
+        for inh in inKeysSorted:
+            scanDict[inh] = (inDict[inh][7]/24.0, inDict[inh][12]/86400.0, inDict[inh][14])
+            antCount = 0
+            antList = []
+            for bl in blKeysSorted[blPos:]:
+                if blDict[bl][0] == inh:
+                    ant1 = blDict[bl][15]
+                    ant2 = blDict[bl][16]
+                    if ant1 not in antList:
+                        antList.append(ant1)
+                        antCount += 1
+                        antTsysDict[(inh, ant1, 1)] = blTsysDict[bl][0]
+                        antTsysDict[(inh, ant1, 2)] = blTsysDict[bl][1]
+                    if ant2 not in antList:
+                        antList.append(ant2)
+                        antCount += 1
+                        antTsysDict[(inh, ant2, 1)] = blTsysDict[bl][2]
+                        antTsysDict[(inh, ant2, 2)] = blTsysDict[bl][3]
+                    blPos += 1
+                    if antCount == 8:
+                        break
+            if antCount != 8:
+                print 'Only %d antenna entries found for scan %d - aborting' % (antCount, inh)
+        timeList = []
+        intervalList = []
+        sourceList = []
+        antList = []
+        allOnesList = []
+        tsys1List = []
+        tsys2List = []
+        nanList = []
+        NaN = float('nan')
+        for inh in inKeysSorted:
+            for ant in range(1, 9):
+                timeList.append(scanDict[inh][0])
+                intervalList.append(scanDict[inh][1])
+                sourceList.append(scanDict[inh][2])
+                antList.append(ant)
+                allOnesList.append(1)
+                tsys1List.append(antTsysDict[(inh, ant, 1)])
+                tsys2List.append(antTsysDict[(inh, ant, 2)])
+                nanList.append(NaN)
+        c1  = pyfits.Column(name='TIME',          format='1D',  array=timeList    )
+        c2  = pyfits.Column(name='TIME_INTERVAL', format='1E',  array=intervalList)
+        c3  = pyfits.Column(name='SOURCE_ID',     format='1J',  array=sourceList  )
+        c4  = pyfits.Column(name='ANTENNA_NO',    format='1J',  array=antList     )
+        c5  = pyfits.Column(name='ARRAY',         format='1J',  array=allOnesList )
+        c6  = pyfits.Column(name='FREQID',        format='1J',  array=allOnesList )
+        c7  = pyfits.Column(name='TSYS_1',        format='E',   array=tsys1List   )
+        c8  = pyfits.Column(name='TANT_1',        format='E',   array=nanList     )
+        c9  = pyfits.Column(name='TSYS_2',        format='E',   array=tsys2List   )
+        c10 = pyfits.Column(name='TANT_2',        format='E',   array=nanList     )
+        coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
+        tsysHDU = pyfits.new_table(coldefs)
+        header = tsysHDU.header
+        header.update('extname',  'SYSTEM_TEMPERATURE')
+        header.update('tabrev',   1)
+        header.update('no_pol', 2)
+        header.update('obscode',  ' ');
+        header.update('no_stkd',  1,                  'Number of Stokes parameters')
+        header.update('stk_1',    -2,                 'First Stokes parameter')
+        header.update('no_band',  1,                  'Number of bands')
+        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
+        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
+        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
+        header.update('ref_pixl', 1,                  'Reference pixel')
+
+        ###
         ### Create the UV_DATA table
         ###
         # Map the entire visibilities file into memory, for easy (and fast) access
         scanOffset = 0
         scanNo = 0
+        blPos = 0
         print 'Creating UV_DATA table for band ', band, ' with ', spSmallDict[band][0], ' channels'
         uList        = []
         vList        = []
@@ -543,8 +642,6 @@ for band in range(49):
         freqList     = []
         intList      = []
         matrixList   = []
-        blKeysSorted = sorted(blDict)
-        blPos = 0
         while (scanOffset < len(visMap)) and (scanNo < maxScan):
             foundBlEntry = False
             foundSpEntry = False
@@ -573,9 +670,19 @@ for band in range(49):
                             scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
                             if scaleExp > (2**15-1):
                                 scaleExp -= 2**16
-                            scale = 2.0**scaleExp
+                            scale = (2.0**scaleExp) * sqrt(2.0)*130.0*2.0
+                            if bl == 0:
+                                ant1Tsys = sqrt(abs(blTsysDict[bl][0]*blTsysDict[bl][1]))
+                                ant2Tsys = sqrt(abs(blTsysDict[bl][2]*blTsysDict[bl][3]))
+                            if 24 < bl < 49:
+                                ant1Tsys = blTsysDict[bl][1]
+                                ant2Tsys = blTsysDict[bl][3]
+                            else:
+                                ant1Tsys = blTsysDict[bl][0]
+                                ant2Tsys = blTsysDict[bl][2]
+                            scale *= sqrt(abs(ant1Tsys*ant2Tsys))
+                            weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
                             dataoff += 2
-                            weight = spBigDict[(band, bl)][1]/maxWeight
                             for i in range(0, spSmallDict[band][0]):
                                 real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
                                 if real > (2**15-1):
@@ -600,7 +707,6 @@ for band in range(49):
         # need to figure out how large each record is.
 
         c10Format = '%dE' % (len(matrixEntry))
-        print 'Matrix format: ', c10Format
         c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
         c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
         c3  = pyfits.Column(name='WW',          format='1D',       array=wList       , unit='SECONDS')
@@ -666,10 +772,18 @@ for band in range(49):
         ### Create the file and write all tables
         ###
         fileName = 'tempFITS-IDI%s.band%d' % (sideBand, band)
+        print 'Writing primary header for file ', fileName
         hdulist.writeto(fileName)
+        print 'Writing ARRAY_GEOMETRY table'
         pyfits.append(fileName, arrayGeometryHDU.data, header=arrayGeometryHDU.header)
+        print 'Writing SOURCE table'
         pyfits.append(fileName, sourceHDU.data,        header=sourceHDU.header       )
+        print 'Writing FREQUENCY table'
         pyfits.append(fileName, frequencyHDU.data,     header=frequencyHDU.header    )
+        print 'Writing ANTENNA table'
         pyfits.append(fileName, antennaHDU.data,       header=antennaHDU.header      )
+        print 'Writing SYSTEM_TEMPERATURE table'
+        pyfits.append(fileName, tsysHDU.data,          header=tsysHDU.header         )
+        print 'Writing UV_DATA table'
         pyfits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
 
