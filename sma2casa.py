@@ -17,7 +17,8 @@ neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_r
 
 nBands = 0
 bandList = []
-spSmallDict = {}
+spSmallDictL = {}
+spSmallDictU = {}
 spBigDict = {}
 antennas = {}
 codesDict = {}
@@ -27,9 +28,8 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-lowestFSky = 1.0e30
 speedOfLight = 2.997925e8
-maxScan = 100000000
+maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
 
@@ -68,8 +68,8 @@ def makeDouble(data):
     return (struct.unpack('d', data[:8]))[0]
 
 def read(dataDir):
-    global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU, lowestFSky
-    global spSmallDict, spBigDict, sourceDict, maxWeight, numberOfBaselines
+    global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU
+    global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
     global blTsysDictL, blTsysDictU
 
     # Check that the directory contains all the required files
@@ -184,6 +184,7 @@ def read(dataDir):
     blRecLen = 158
     nBlRecords = fSize/blRecLen
     baselineList = []
+    blSidebandDict = {}
     for rec in range(nBlRecords):
         if (rec % 10000) == 0:
             print '\t processing record %d of %d (%2.0f%% done)' % (rec, nBlRecords, 100.0*float(rec)/float(nBlRecords))
@@ -214,6 +215,7 @@ def read(dataDir):
                 numberOfBaselines +=1
             ant1TsysOff =  makeInt(data[ 64:], 4)
             ant2TsysOff =  makeInt(data[ 68:], 4)
+            blSidebandDict[blhid] = isb
             if isb == 0:
                 blDictL[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
                                   blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
@@ -272,12 +274,15 @@ def read(dataDir):
                 wt = 0.0
             if wt > maxWeight:
                 maxWeight = wt
-            if fsky < lowestFSky:
-                lowestFSky = fsky
             spBigDict[(iband, blhid)] = (dataoff, wt)
             if iband not in bandList:
                 bandList.append(iband)
-                spSmallDict[iband] = (nch, fres*1.0e6, rfreq*1.0e9)
+            if blSidebandDict[blhid] == 0:
+                if iband not in spSmallDictL:
+                    spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+            else:
+                if iband not in spSmallDictU:
+                    spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
         if inhid > maxScan:
             break
     nBands = len(bandList)
@@ -289,17 +294,20 @@ for line in open(dataSet+'/projectInfo'):
 read(dataSet)
 visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
 visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
-for band in bandList:
-#for band in range(49):
+#for band in bandList:
+for band in range(49):
     for sb in range(2):
         if sb == 0:
             sideBand = 'Lower'
             blDict = blDictL
             blTsysDict = blTsysDictL
+            spSmallDict = spSmallDictL
         else:
             sideBand = 'Upper'
             blDict = blDictU
             blTsysDict = blTsysDictU
+            spSmallDict = spSmallDictU
+        lowestFSky = spSmallDict[band][2] - 52.0e6
         
         ###
         ### Make the Primary HDU
@@ -385,27 +393,27 @@ for band in bandList:
         header.update('arrnam',   'SMA')
         header.update('tabrev',   1)
         header.update('obscode',  ' ');
-        header.update('extver',   1,                  'Array number')
-        header.update('arrayx',   0.0,                'Array origin x coordinate')
-        header.update('arrayy',   0.0,                'Array origin y coordinate')
-        header.update('arrayz',   0.0,                'Array origin z coordinate')
-        header.update('numorb',   0,                  'Number of orbital parameters')
-        header.update('polarx',   0.0,                'x coordinate of north pole (arcsec)')
-        header.update('polary',   0.0,                'y coordinate of north pole (arcsec)')
-        header.update('freq',     lowestFSky*1.0e9,   'Reference frequency')
-        header.update('timesys',  'UTC',              'Time system')
-        header.update('degpdy' ,  0.0,                'Earth rotation rate')
-        header.update('ut1utc' ,  0.0,                'UT1 - UTC (seconds) - PLACEHOLDER')
-        header.update('iatutc' ,  0.0,                'IAT - UTC (seconds) - PLACEHOLDER')
-        header.update('rdate',    refTimeString,      'Reference date')
-        header.update('gstia0',   gST,                'GST at 0h on reference date (degrees)')
-        header.update('no_stkd',  1,                  'Number of Stokes parameters')
-        header.update('stk_1',    -2,                 'First Stokes parameter')
-        header.update('no_band',  1,                  'Number of bands')
-        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
-        header.update('ref_pixl', 1,                  'Reference pixel')
-        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
-        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
+        header.update('extver',   1,                         'Array number')
+        header.update('arrayx',   0.0,                       'Array origin x coordinate')
+        header.update('arrayy',   0.0,                       'Array origin y coordinate')
+        header.update('arrayz',   0.0,                       'Array origin z coordinate')
+        header.update('numorb',   0,                         'Number of orbital parameters')
+        header.update('polarx',   0.0,                       'x coordinate of north pole (arcsec)')
+        header.update('polary',   0.0,                       'y coordinate of north pole (arcsec)')
+        header.update('freq',     lowestFSky,                'Reference frequency')
+        header.update('timesys',  'UTC',                     'Time system')
+        header.update('degpdy' ,  0.0,                       'Earth rotation rate')
+        header.update('ut1utc' ,  0.0,                       'UT1 - UTC (seconds) - PLACEHOLDER')
+        header.update('iatutc' ,  0.0,                       'IAT - UTC (seconds) - PLACEHOLDER')
+        header.update('rdate',    refTimeString,             'Reference date')
+        header.update('gstia0',   gST,                       'GST at 0h on reference date (degrees)')
+        header.update('no_stkd',  1,                         'Number of Stokes parameters')
+        header.update('stk_1',    -2,                        'First Stokes parameter')
+        header.update('no_band',  1,                         'Number of bands')
+        header.update('ref_freq', lowestFSky,                'File reference frequency')
+        header.update('ref_pixl', 1,                         'Reference pixel')
+        header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
+        header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
 
         ###
         ### Make the SOURCE table
@@ -436,7 +444,7 @@ for band in bandList:
             velList.append(inDict[0][8]*1000.0)
             vtList.append('LSR')
             vdList.append('RADIO')
-            restList.append(spSmallDict[band][2])
+            restList.append(lowestFSky)
         c1  = pyfits.Column(name='SOURCE_ID',   format='1J',  array=iDList  )
         c2  = pyfits.Column(name='SOURCE',      format='16A', array=nameList)
         c3  = pyfits.Column(name='QUAL',        format='1J',  array=qualList)
@@ -467,13 +475,13 @@ for band in bandList:
         header.update('extname',  'SOURCE')
         header.update('tabrev',   1)
         header.update('obscode',  ' ');
-        header.update('no_stkd',  1,                  'Number of Stokes parameters')
-        header.update('stk_1',    -2,                 'First Stokes parameter')
-        header.update('no_band',  1,                  'Number of bands')
-        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
-        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
-        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
-        header.update('ref_pixl', 1,                  'Reference pixel')
+        header.update('no_stkd',  1,                         'Number of Stokes parameters')
+        header.update('stk_1',    -2,                        'First Stokes parameter')
+        header.update('no_band',  1,                         'Number of bands')
+        header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
+        header.update('ref_freq', lowestFSky,                'File reference frequency')
+        header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+        header.update('ref_pixl', 1,                         'Reference pixel')
 
         ###
         ### Create the FREQUENCY table
@@ -492,13 +500,13 @@ for band in bandList:
         header.update('extname',  'FREQUENCY')
         header.update('tabrev',   1)
         header.update('obscode',  ' ');
-        header.update('no_stkd',  1,                  'Number of Stokes parameters')
-        header.update('stk_1',    -2,                 'First Stokes parameter')
-        header.update('no_band',  1,                  'Number of bands')
-        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
-        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
-        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
-        header.update('ref_pixl', 1,                  'Reference pixel')
+        header.update('no_stkd',  1,                         'Number of Stokes parameters')
+        header.update('stk_1',    -2,                        'First Stokes parameter')
+        header.update('no_band',  1,                         'Number of bands')
+        header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
+        header.update('ref_freq', lowestFSky,                'File reference frequency')
+        header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+        header.update('ref_pixl', 1,                         'Reference pixel')
 
         ###
         ### Create the ANTENNA table
@@ -540,13 +548,13 @@ for band in bandList:
 
         header.update('tabrev',   1)
         header.update('obscode',  ' ');
-        header.update('no_stkd',  1,                  'Number of Stokes parameters')
-        header.update('stk_1',    -2,                 'First Stokes parameter')
-        header.update('no_band',  1,                  'Number of bands')
-        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
-        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
-        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
-        header.update('ref_pixl', 1,                  'Reference pixel')
+        header.update('no_stkd',  1,                         'Number of Stokes parameters')
+        header.update('stk_1',    -2,                        'First Stokes parameter')
+        header.update('no_band',  1,                         'Number of bands')
+        header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
+        header.update('ref_freq', lowestFSky,                'File reference frequency')
+        header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+        header.update('ref_pixl', 1,                         'Reference pixel')
 
         ###
         ### Create the SYSTEM_TEMPERATURE table
@@ -615,13 +623,13 @@ for band in bandList:
         header.update('tabrev',   1)
         header.update('no_pol', 2)
         header.update('obscode',  ' ');
-        header.update('no_stkd',  1,                  'Number of Stokes parameters')
-        header.update('stk_1',    -2,                 'First Stokes parameter')
-        header.update('no_band',  1,                  'Number of bands')
-        header.update('no_chan',  spSmallDict[band][0],  'The number of spectral channels')
-        header.update('ref_freq', lowestFSky*1.0e9,   'File reference frequency')
-        header.update('chan_bw',  abs(spSmallDict[band][1]),  'The channel bandwidth')
-        header.update('ref_pixl', 1,                  'Reference pixel')
+        header.update('no_stkd',  1,                         'Number of Stokes parameters')
+        header.update('stk_1',    -2,                        'First Stokes parameter')
+        header.update('no_band',  1,                         'Number of bands')
+        header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
+        header.update('ref_freq', lowestFSky,                'File reference frequency')
+        header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+        header.update('ref_pixl', 1,                         'Reference pixel')
 
         ###
         ### Create the UV_DATA table
@@ -703,9 +711,6 @@ for band in bandList:
                     sys.exit(0)
             scanOffset += recSize+8
 
-        # We must loop through all the visibilities in the sch_read file, so first we
-        # need to figure out how large each record is.
-
         c10Format = '%dE' % (len(matrixEntry))
         c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
         c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
@@ -737,7 +742,7 @@ for band in bandList:
         header.update('maxis3',   spSmallDict[band][0],       'Number of data points on Freq axis'   )
         header.update('ctype3',   'FREQ',                     'Type of axis 3'                       )
         header.update('cdelt3',   abs(spSmallDict[band][1]),  'Channel spacing in Hz'                )
-        header.update('crval3',   spSmallDict[band][2],       'Frequency of reference pixel'         )
+        header.update('crval3',   lowestFSky,                 'Frequency of reference pixel'         )
         header.update('crpix3',   1.0                                                                )
         header.update('maxis4',   1,                          'Number of data points on Band axis  ' )
         header.update('ctype4',   'BAND',                     'Type of axis 4'                       )
@@ -761,7 +766,7 @@ for band in bandList:
         header.update('stk_1',    -2,                        'First Stokes parameter'                )
         header.update('no_band',  1,                         'Number of bands'                       )
         header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels'       )
-        header.update('ref_freq', lowestFSky*1.0e9,          'File reference frequency'              )
+        header.update('ref_freq', lowestFSky,                'File reference frequency'              )
         header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth'                 )
         header.update('ref_pixl', 1,                         'Reference pixel'                       )
 
