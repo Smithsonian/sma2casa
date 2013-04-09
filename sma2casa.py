@@ -32,6 +32,7 @@ speedOfLight = 2.997925e8
 maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
+edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
 
 def normalize0to360(angle):
     while angle >= 360.0:
@@ -288,7 +289,7 @@ def read(dataDir):
     nBands = len(bandList)
     bandList.sort()
 
-dataSet = '/sma/SMAusers/taco/SWARMTest/sma/rtdata/newFormat/mir_data/130401_07:58:28'
+dataSet = '/sma/SMAusers/taco/SWARMTest/sma/rtdata/newFormat/mir_data/130408_17:20:01'
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
 read(dataSet)
@@ -634,11 +635,14 @@ for band in range(49):
         ###
         ### Create the UV_DATA table
         ###
-        # Map the entire visibilities file into memory, for easy (and fast) access
+        if spSmallDict[band][1] < 0:
+            reverseChannelOrder = True
+        else:
+            reverseChannelOrder = False
         scanOffset = 0
         scanNo = 0
         blPos = 0
-        print 'Creating UV_DATA table for band ', band, ' with ', spSmallDict[band][0], ' channels'
+        print 'Creating UV_DATA table for band ', band, sideBand, ' with ', spSmallDict[band][0], ' channels'
         uList        = []
         vList        = []
         wList        = []
@@ -650,6 +654,13 @@ for band in range(49):
         freqList     = []
         intList      = []
         matrixList   = []
+        nChannels = spSmallDict[band][0]
+        if band == 0:
+            firstGoodChannel = 0
+            lastGoodChannel = 1000000
+        else:
+            firstGoodChannel = int(float(nChannels)*edgeTrimFraction) - 1
+            lastGoodChannel  = int(float(nChannels)*(1.0-edgeTrimFraction) + 0.5) - 1
         while (scanOffset < len(visMap)) and (scanNo < maxScan):
             foundBlEntry = False
             foundSpEntry = False
@@ -691,7 +702,7 @@ for band in range(49):
                             scale *= sqrt(abs(ant1Tsys*ant2Tsys))
                             weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
                             dataoff += 2
-                            for i in range(0, spSmallDict[band][0]):
+                            for i in range(0, nChannels):
                                 real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
                                 if real > (2**15-1):
                                     real -= 2**16
@@ -700,9 +711,24 @@ for band in range(49):
                                     imag -= 2**16
                                 matrixEntry.append(float(real*scale))
                                 matrixEntry.append(float(-imag*scale))
-                                matrixEntry.append(weight)
+                                if firstGoodChannel <= i <= lastGoodChannel:
+                                    matrixEntry.append(weight)
+                                else:
+                                    matrixEntry.append(0.0)
                                 dataoff += 4
-                            matrixList.append(matrixEntry)
+                            if reverseChannelOrder and (band != 0):
+                                # This is a chunk with an odd number of LSB downconversions, so channels must
+                                # be reordered, because the FITS-IDI standard demands positive increments in
+                                # frequency between channels.
+                                swappedEntry = []
+                                nSets = len(matrixEntry)/3
+                                for i in range(nSets):
+                                    swappedEntry.append(matrixEntry[3*nSets - (3 + i*3)])
+                                    swappedEntry.append(matrixEntry[3*nSets - (2 + i*3)])
+                                    swappedEntry.append(matrixEntry[3*nSets - (1 + i*3)])
+                                matrixList.append(swappedEntry)
+                            else:
+                                matrixList.append(matrixEntry)
                         if nBlFound == numberOfBaselines:
                             break
                     blPos += 1
