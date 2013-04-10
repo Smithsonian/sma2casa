@@ -1,4 +1,4 @@
-#!/home/rtm/myPythonEnv/bin/python
+#!/sma/SMAusers/taco/myPythonEnv/bin/python
 """
 sma2casa.py
 ===========
