@@ -32,19 +32,25 @@ speedOfLight = 2.997925e8
 maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
+trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
 chunkList = range(1,49)
 sidebandList = [0, 1]
 verbose = True
+NaN = float('nan')
+totalPoints = 0
+totalZeros = 0
 
 def usage():
     print 'Usage: ', sys.argv[0], ' path-to-SMA-data [options]'
     print 'Options: (which must come *after* the path argument)'
     print '\t -c m,n,o [--chunks=m,n,o]\tProcess only chunks m, n and o'
     print '\t -h [--help]\t\t\tPrint this message and exit'
-    print '\t -l [--lower]\t\t\tProcess lower sideband only (default is both)'
+    print '\t -l [--lower]\t\t\tProcess lower sideband only'
+    print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
     print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
-    print '\t -u [--upper]\t\t\tProcess upper sideband only (default is both)'
+    print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
+    print '\t -u [--upper]\t\t\tProcess upper sideband only'
 
 def normalize0to360(angle):
     while angle >= 360.0:
@@ -292,18 +298,20 @@ def read(dataDir):
             dataoff   =    makeInt(data[100:], 4)
             rfreq     = makeDouble(data[104:])
             if flags != 0:
-                wt = 0.0
-            if wt > maxWeight:
-                maxWeight = wt
+                wt *= -1.0
             spBigDict[(iband, blhid)] = (dataoff, wt)
             if iband not in bandList:
                 bandList.append(iband)
             if blSidebandDict[blhid] == 0:
+                wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
                 if iband not in spSmallDictL:
                     spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
             else:
+                wt = wt/(max(blTsysDictU[blhid][0], blTsysDictU[blhid][1])*max(blTsysDictU[blhid][2], blTsysDictU[blhid][3]))
                 if iband not in spSmallDictU:
                     spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+            if abs(wt) > maxWeight:
+                maxWeight = abs(wt)
         if inhid > maxScan:
             break
     nBands = len(bandList)
@@ -314,25 +322,30 @@ if len(sys.argv) < 2:
     exit(-1)
 dataSet = sys.argv[1]
 try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:lhsu", ['chunks=', 'help', 'silent'])
+    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:stu", ['chunks=', 'help', 'lower', 'percent=', 'silent', 'trim', 'upper'])
 except getopt.GetoptError as err:
     usage()
     sys.exit(-1)
 for o, a in opts:
-    if o in ('-s', '--silent'):
-        verbose = False
+    if o in ('-c', '--chunks'):
+        sChunkList = a.split(',')
+        chunkList = []
+        for chunk in sChunkList:
+            chunkList.append(int(chunk))
     elif o in ('-h', '--help'):
         usage()
         sys.exit()
     elif o in ('-l', '--lower'):
         sidebandList = [0]
+    elif o in ('-p', '--percent'):
+        edgeTrimFraction = float(a)/100.0
+        trimEdges = True
+    elif o in ('-s', '--silent'):
+        verbose = False
+    elif o in ('-t', '--trim'):
+        trimEdges = True
     elif o in ('-u', '--upper'):
         sidebandList = [1]
-    elif o in ('-c', '--chunks'):
-        sChunkList = a.split(',')
-        chunkList = []
-        for chunk in sChunkList:
-            chunkList.append(int(chunk))
     else:
         print o, a
         assert False, 'unhandled option'
@@ -643,7 +656,6 @@ for band in bandList:
             tsys1List = []
             tsys2List = []
             nanList = []
-            NaN = float('nan')
             for inh in inKeysSorted:
                 for ant in range(1, 9):
                     timeList.append(scanDict[inh][0])
@@ -757,12 +769,17 @@ for band in bandList:
                                     imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
                                     if imag > (2**15-1):
                                         imag -= 2**16
-                                    matrixEntry.append(float(real*scale))
-                                    matrixEntry.append(float(-imag*scale))
-                                    if firstGoodChannel <= i <= lastGoodChannel:
-                                        matrixEntry.append(weight)
+                                    if (real == 0) and (imag == 0):
+                                        totalZeros += 1
+                                        print 'Band ', band, ' sideband ', sideBand, ' channel ', i, ' has 0 amplitude.'
+                                    if ((weight > 0.0) and (firstGoodChannel <= i <= lastGoodChannel)) or (not trimEdges):
+                                        matrixEntry.append(float(real*scale))
+                                        matrixEntry.append(float(-imag*scale))
                                     else:
                                         matrixEntry.append(0.0)
+                                        matrixEntry.append(0.0)
+                                    matrixEntry.append(weight)
+                                    totalPoints += 1
                                     dataoff += 4
                                 if reverseChannelOrder and (band != 0):
                                     # This is a chunk with an odd number of LSB downconversions, so channels must
@@ -844,6 +861,7 @@ for band in bandList:
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth'                 )
             header.update('ref_pixl', 1,                         'Reference pixel'                       )
             
+#            header.update('weightyp', 'NORMAL',                  'Normal 1/(uncertainty**2) weights'     )
             header.update('telescop', 'SMA',                     'Submillimeter Array, Hawaii'           )
             header.update('observer', 'Taco'                                                             )
 
@@ -872,3 +890,5 @@ for band in bandList:
             if verbose:
                 print 'Writing UV_DATA table'
             pyfits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
+if verbose:
+    print totalPoints, ' visibilities were written, of which ', totalZeros, ' had zero amplitude.'
