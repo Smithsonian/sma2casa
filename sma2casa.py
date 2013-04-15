@@ -772,12 +772,12 @@ for band in bandList:
                                     if (real == 0) and (imag == 0):
                                         totalZeros += 1
                                         print 'Band ', band, ' sideband ', sideBand, ' channel ', i, ' has 0 amplitude.'
-                                    if ((weight > 0.0) and (firstGoodChannel <= i <= lastGoodChannel)) or (not trimEdges):
+                                    if (weight <= 0.0) or (trimEdges and (not (firstGoodChannel <= i <= lastGoodChannel))):
+                                        matrixEntry.append(0.0)
+                                        matrixEntry.append(0.0)
+                                    else:
                                         matrixEntry.append(float(real*scale))
                                         matrixEntry.append(float(-imag*scale))
-                                    else:
-                                        matrixEntry.append(0.0)
-                                        matrixEntry.append(0.0)
                                     matrixEntry.append(weight)
                                     totalPoints += 1
                                     dataoff += 4
