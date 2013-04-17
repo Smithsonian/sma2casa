@@ -19,6 +19,7 @@ for sideband in sidebandsToProcess:
             testFile = open('./tempFITS-IDI%s.band%d' % (sideband, i))
             print 'Chunk s%02d FITS-IDI file is present, will process' % (i)
             chunksToProcess.append(i)
+            testFile.close()
         except IOError:
             print 'Chunk s%02d FITS-IDI file is missing, will skip' % (i)
 
