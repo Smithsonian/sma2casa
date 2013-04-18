@@ -32,9 +32,10 @@ speedOfLight = 2.997925e8
 maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
+antennaList = []
 trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
-chunkList = range(1,49)
+chunkList = range(49)
 sidebandList = [0, 1]
 verbose = True
 NaN = float('nan')
@@ -89,7 +90,7 @@ def makeDouble(data):
 def read(dataDir):
     global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
-    global blTsysDictL, blTsysDictU
+    global antennaList, blTsysDictL, blTsysDictU
 
     # Check that the directory contains all the required files
     if verbose:
@@ -238,6 +239,10 @@ def read(dataDir):
             if (ant1, ant2) not in baselineList:
                 baselineList.append((ant1, ant2))
                 numberOfBaselines +=1
+            if ant1 not in antennaList:
+                antennaList.append(ant1)
+            if ant2 not in antennaList:
+                antennaList.append(ant2)
             ant1TsysOff =  makeInt(data[ 64:], 4)
             ant2TsysOff =  makeInt(data[ 68:], 4)
             blSidebandDict[blhid] = isb
@@ -247,8 +252,12 @@ def read(dataDir):
             else:
                 blDictU[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
                                   blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
+    nAnts = len(antennaList)
     if verbose:
-        print numberOfBaselines, ' baselines seen in this data set.'
+        print '%d antennas and %d baselines seen in this data set.' % (nAnts, numberOfBaselines)
+    if numberOfBaselines != (nAnts*(nAnts-1)/2):
+        print 'Number of baselines seen inconsistant with the number of antennas - aborting'
+        sys.exit(-1)
 
     ###
     ### Pull the Tsys info out of tsys_read
@@ -432,7 +441,7 @@ for band in bandList:
             antStyleList = []
             antOffList = []
             antDiameterList = []
-            for ant in range(1,9):
+            for ant in range(1, 9):
                 antList.append(antennas[ant])
                 velList.append((0.0, 0.0, 0.0))
                 antNumList.append(ant)
@@ -579,7 +588,7 @@ for band in bandList:
             polAList = []
             polBList = []
             polCalAList = []
-            for ant in range(1,9):
+            for ant in range(1, 9):
                 timeList.append(0.0)
                 timeIntList.append(1.0)
                 arrayList.append(1)
@@ -625,6 +634,7 @@ for band in bandList:
             scanDict = {}
             antTsysDict = {}
             inKeysSorted = sorted(inDict)
+            antennaListSorted = sorted(antennaList)
             for inh in inKeysSorted:
                 scanDict[inh] = (inDict[inh][7]/24.0, inDict[inh][12]/86400.0, inDict[inh][14])
                 antCount = 0
@@ -644,10 +654,11 @@ for band in bandList:
                             antTsysDict[(inh, ant2, 1)] = blTsysDict[bl][2]
                             antTsysDict[(inh, ant2, 2)] = blTsysDict[bl][3]
                         blPos += 1
-                        if antCount == 8:
+                        if antCount == len(antennaList):
                             break
-                if antCount != 8:
+                if antCount != len(antennaList):
                     print 'Only %d antenna entries found for scan %d - aborting' % (antCount, inh)
+                    sys.exit(-1)
             timeList = []
             intervalList = []
             sourceList = []
@@ -657,7 +668,7 @@ for band in bandList:
             tsys2List = []
             nanList = []
             for inh in inKeysSorted:
-                for ant in range(1, 9):
+                for ant in antennaListSorted:
                     timeList.append(scanDict[inh][0])
                     intervalList.append(scanDict[inh][1])
                     sourceList.append(scanDict[inh][2])
