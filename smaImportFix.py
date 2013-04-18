@@ -7,9 +7,6 @@ from math import pi,floor
 
 sidebandsToProcess = ['Lower', 'Upper']
 # Parameters for flagdata:
-flagbackup = False
-mode       ='clip'
-clipzeros  = True
 
 for sideband in sidebandsToProcess:
     # First figure out which chunks need to be processed
@@ -30,6 +27,9 @@ for sideband in sidebandsToProcess:
         print 'Reading in chunk s%02d (%s)' % (i, sideband)
         importfitsidi()
         # Flag the bad data points
+        flagbackup = False
+        mode       ='clip'
+        clipzeros  = True
         flagdata()
 
     #Delete the FITS-IDI files
