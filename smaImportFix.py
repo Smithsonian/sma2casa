@@ -30,7 +30,7 @@ for sideband in sidebandsToProcess:
         flagbackup = False
         mode       ='clip'
         clipzeros  = True
-        flagdata()
+        tflagdata()
 
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)
