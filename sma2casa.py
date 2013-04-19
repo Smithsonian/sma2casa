@@ -41,6 +41,7 @@ verbose = True
 NaN = float('nan')
 totalPoints = 0
 totalZeros = 0
+newFormat = True
 
 def usage():
     print 'Usage: ', sys.argv[0], ' path-to-SMA-data [options]'
@@ -77,20 +78,36 @@ def toGeocentric(X, Y, Z):
 
 def makeInt(data, size):
     tInt = 0
-    for i in range(size):
-        tInt += ord(data[i])<<(i<<3)
+    if newFormat:
+        for i in range(size):
+            tInt += ord(data[i])<<(i<<3)
+    else:
+        for i in range(size):
+            tInt += ord(data[size-i-1])<<(i<<3)
     return tInt
 
 def makeFloat(data):
-    return (struct.unpack('f', data[:4]))[0]
+    if not newFormat:
+        hostByteOrderData = ''
+        for i in range(4):
+            hostByteOrderData += chr(ord(data[3-i]))
+        return (struct.unpack('f', hostByteOrderData[:4]))[0]
+    else:
+        return (struct.unpack('f', data[:4]))[0]
 
 def makeDouble(data):
-    return (struct.unpack('d', data[:8]))[0]
+    if not newFormat:
+        hostByteOrderData = ''
+        for i in range(8):
+            hostByteOrderData += chr(ord(data[7-i]))
+        return (struct.unpack('d', hostByteOrderData[:8]))[0]
+    else:
+        return (struct.unpack('d', data[:8]))[0]
 
 def read(dataDir):
     global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
-    global antennaList, blTsysDictL, blTsysDictU
+    global antennaList, blTsysDictL, blTsysDictU, newFormat
 
     # Check that the directory contains all the required files
     if verbose:
@@ -100,6 +117,23 @@ def read(dataDir):
         if not needed in dirContents:
             print "The directory %s does not have a %s file - aborting" % (dataDir, needed)
             sys.exit(-1)
+
+    ###
+    ### Determine if this is an old-format or new-format data file
+    ###
+    f = open(dataDir+'/in_read', 'rb')
+    data = f.read()
+    firstInt = makeInt(data[0:], 4)
+    if firstInt != 0:
+        newFormat = True
+    else:
+        newFormat = False
+    f.close()
+    if verbose:
+        if newFormat:
+            print 'This is a new format data set.'
+        else:
+            print 'This is an old format data set'
 
     ###
     ### Read in the antennas file - make a dictionary antennas[ant #] = (X, Y, Z)
@@ -155,35 +189,65 @@ def read(dataDir):
         print 'Reading in_read'
     f = open(dataDir+'/in_read', 'rb')
     data = f.read()
-    inRecLen = 188
-    nInRecords = len(data)/inRecLen
     savedSourceInfo = True
+    if newFormat:
+        inRecLen = 188
+    else:
+        inRecLen = 132
+    nInRecords = len(data)/inRecLen
     for rec in range(nInRecords):
-        traid     =    makeInt(data[rec*inRecLen +   0:], 4)
-        inhid     =    makeInt(data[rec*inRecLen +   4:], 4)
-        az        =  makeFloat(data[rec*inRecLen +  12:])
-        el        =  makeFloat(data[rec*inRecLen +  16:])
-        hA        =  makeFloat(data[rec*inRecLen +  20:])
-        iut       =    makeInt(data[rec*inRecLen +  24:], 2)
-        iref_time =    makeInt(data[rec*inRecLen +  26:], 2)
-        dhrs      = makeDouble(data[rec*inRecLen +  28:])
-        vc        =  makeFloat(data[rec*inRecLen +  36:])
-        sx        = makeDouble(data[rec*inRecLen +  40:])
-        sy        = makeDouble(data[rec*inRecLen +  48:])
-        sz        = makeDouble(data[rec*inRecLen +  56:])
-        rinteg    =  makeFloat(data[rec*inRecLen +  64:])
-        proid     =    makeInt(data[rec*inRecLen +  68:], 4)
-        souid     =    makeInt(data[rec*inRecLen +  72:], 4)
-        isource   =    makeInt(data[rec*inRecLen +  76:], 2)
-        ivrad     =    makeInt(data[rec*inRecLen +  78:], 2)
-        offx      =  makeFloat(data[rec*inRecLen +  80:])
-        offy      =  makeFloat(data[rec*inRecLen +  84:])
-        ira       =    makeInt(data[rec*inRecLen +  88:], 2)
-        idec      =    makeInt(data[rec*inRecLen +  90:], 2)
-        rar       = makeDouble(data[rec*inRecLen +  92:])
-        decr      = makeDouble(data[rec*inRecLen + 100:])
-        epoch     =  makeFloat(data[rec*inRecLen + 108:])
-        size      =  makeFloat(data[rec*inRecLen + 112:])
+        if newFormat:
+            traid     =    makeInt(data[rec*inRecLen +   0:], 4)
+            inhid     =    makeInt(data[rec*inRecLen +   4:], 4)
+            az        =  makeFloat(data[rec*inRecLen +  12:])
+            el        =  makeFloat(data[rec*inRecLen +  16:])
+            hA        =  makeFloat(data[rec*inRecLen +  20:])
+            iut       =    makeInt(data[rec*inRecLen +  24:], 2)
+            iref_time =    makeInt(data[rec*inRecLen +  26:], 2)
+            dhrs      = makeDouble(data[rec*inRecLen +  28:])
+            vc        =  makeFloat(data[rec*inRecLen +  36:])
+            sx        = makeDouble(data[rec*inRecLen +  40:])
+            sy        = makeDouble(data[rec*inRecLen +  48:])
+            sz        = makeDouble(data[rec*inRecLen +  56:])
+            rinteg    =  makeFloat(data[rec*inRecLen +  64:])
+            proid     =    makeInt(data[rec*inRecLen +  68:], 4)
+            souid     =    makeInt(data[rec*inRecLen +  72:], 4)
+            isource   =    makeInt(data[rec*inRecLen +  76:], 2)
+            ivrad     =    makeInt(data[rec*inRecLen +  78:], 2)
+            offx      =  makeFloat(data[rec*inRecLen +  80:])
+            offy      =  makeFloat(data[rec*inRecLen +  84:])
+            ira       =    makeInt(data[rec*inRecLen +  88:], 2)
+            idec      =    makeInt(data[rec*inRecLen +  90:], 2)
+            rar       = makeDouble(data[rec*inRecLen +  92:])
+            decr      = makeDouble(data[rec*inRecLen + 100:])
+            epoch     =  makeFloat(data[rec*inRecLen + 108:])
+            size      =  makeFloat(data[rec*inRecLen + 112:])
+        else: # Old format file
+            traid     =    makeInt(data[rec*inRecLen +   6:], 4)
+            inhid     =    makeInt(data[rec*inRecLen +  10:], 4)
+            az        =  makeFloat(data[rec*inRecLen +  20:])
+            el        =  makeFloat(data[rec*inRecLen +  24:])
+            hA        =  makeFloat(data[rec*inRecLen +  28:])
+            iut       =    makeInt(data[rec*inRecLen +  32:], 2)
+            iref_time =    makeInt(data[rec*inRecLen +  34:], 2)
+            dhrs      = makeDouble(data[rec*inRecLen +  36:])
+            vc        =  makeFloat(data[rec*inRecLen +  44:])
+            sx        = makeDouble(data[rec*inRecLen +  50:])
+            sy        = makeDouble(data[rec*inRecLen +  58:])
+            sz        = makeDouble(data[rec*inRecLen +  66:])
+            rinteg    =  makeFloat(data[rec*inRecLen +  74:])
+            proid     =    makeInt(data[rec*inRecLen +  78:], 4)
+            souid     =    makeInt(data[rec*inRecLen +  82:], 4)
+            isource   =    makeInt(data[rec*inRecLen +  86:], 2)
+            ivrad     =    makeInt(data[rec*inRecLen +  88:], 2)
+            offx      =  makeFloat(data[rec*inRecLen +  90:])
+            offy      =  makeFloat(data[rec*inRecLen +  94:])
+            ira       =    makeInt(data[rec*inRecLen + 100:], 2)
+            idec      =    makeInt(data[rec*inRecLen + 102:], 2)
+            rar       = makeDouble(data[rec*inRecLen + 104:])
+            decr      = makeDouble(data[rec*inRecLen + 112:])
+            epoch     =  makeFloat(data[rec*inRecLen + 120:])
+            size      =  makeFloat(data[rec*inRecLen + 128:])
         inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
                          rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size)
         if souid not in sourceDict:
@@ -207,7 +271,10 @@ def read(dataDir):
         print 'Reading bl_read'
     f = open(dataDir+'/bl_read', 'rb')
     fSize = os.path.getsize(dataDir+'/bl_read')
-    blRecLen = 158
+    if newFormat:
+        blRecLen = 158
+    else:
+        blRecLen = 118
     nBlRecords = fSize/blRecLen
     baselineList = []
     blSidebandDict = {}
@@ -217,25 +284,50 @@ def read(dataDir):
             sys.stdout.flush()
         data = f.read(blRecLen)
         if len(data) == blRecLen:
-            blhid     =    makeInt(data[  0:], 4)
-            inhid     =    makeInt(data[  4:], 4)
-            isb       =    makeInt(data[  8:], 2)
-            ipol      =    makeInt(data[ 10:], 2)
-            ant1rx    =    makeInt(data[ 12:], 2)
-            ant2rx    =    makeInt(data[ 14:], 2)
-            pointing  =    makeInt(data[ 16:], 2)
-            irec      =    makeInt(data[ 18:], 2)
-            u         =  makeFloat(data[ 20:])
-            v         =  makeFloat(data[ 24:])
-            w         =  makeFloat(data[ 28:])
-            prbl      =  makeFloat(data[ 32:])
-            coh       =  makeFloat(data[ 36:])
-            avedhrs   = makeDouble(data[ 40:])
-            ampave    =  makeFloat(data[ 48:])
-            phaave    =  makeFloat(data[ 52:])
-            blsid     =    makeInt(data[ 56:], 4)
-            ant1      =    makeInt(data[ 60:], 2)
-            ant2      =    makeInt(data[ 62:], 2)
+            if newFormat:
+                blhid     =    makeInt(data[  0:], 4)
+                inhid     =    makeInt(data[  4:], 4)
+                isb       =    makeInt(data[  8:], 2)
+                ipol      =    makeInt(data[ 10:], 2)
+                ant1rx    =    makeInt(data[ 12:], 2)
+                ant2rx    =    makeInt(data[ 14:], 2)
+                pointing  =    makeInt(data[ 16:], 2)
+                irec      =    makeInt(data[ 18:], 2)
+                u         =  makeFloat(data[ 20:])
+                v         =  makeFloat(data[ 24:])
+                w         =  makeFloat(data[ 28:])
+                prbl      =  makeFloat(data[ 32:])
+                coh       =  makeFloat(data[ 36:])
+                avedhrs   = makeDouble(data[ 40:])
+                ampave    =  makeFloat(data[ 48:])
+                phaave    =  makeFloat(data[ 52:])
+                blsid     =    makeInt(data[ 56:], 4)
+                ant1      =    makeInt(data[ 60:], 2)
+                ant2      =    makeInt(data[ 62:], 2)
+                ant1TsysOff =  makeInt(data[ 64:], 4)
+                ant2TsysOff =  makeInt(data[ 68:], 4)
+            else: # old format
+                blhid     =    makeInt(data[  0:], 4)
+                inhid     =    makeInt(data[  4:], 4)
+                isb       =    makeInt(data[  8:], 2)
+                ipol      =    makeInt(data[ 10:], 2)
+                ant1rx    =    makeInt(data[ 16:], 2)
+                ant2rx    =    makeInt(data[ 18:], 2)
+                pointing  =    makeInt(data[ 22:], 2)
+                irec      =    makeInt(data[ 24:], 2)
+                u         =  makeFloat(data[ 28:])
+                v         =  makeFloat(data[ 32:])
+                w         =  makeFloat(data[ 36:])
+                prbl      =  makeFloat(data[ 40:])
+                coh       =  makeFloat(data[ 52:])
+                avedhrs   = makeDouble(data[ 72:])
+                ampave    =  makeFloat(data[ 80:])
+                phaave    =  makeFloat(data[ 84:])
+                blsid     =    makeInt(data[ 92:], 4)
+                ant1      =    makeInt(data[ 96:], 2)
+                ant2      =    makeInt(data[ 98:], 2)
+                ant1TsysOff =  0
+                ant2TsysOff =  0
             if (ant1, ant2) not in baselineList:
                 baselineList.append((ant1, ant2))
                 numberOfBaselines +=1
@@ -243,8 +335,6 @@ def read(dataDir):
                 antennaList.append(ant1)
             if ant2 not in antennaList:
                 antennaList.append(ant2)
-            ant1TsysOff =  makeInt(data[ 64:], 4)
-            ant2TsysOff =  makeInt(data[ 68:], 4)
             blSidebandDict[blhid] = isb
             if isb == 0:
                 blDictL[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
@@ -262,20 +352,53 @@ def read(dataDir):
     ###
     ### Pull the Tsys info out of tsys_read
     ###
-    tsysFile = os.open(dataDir+'/tsys_read', os.O_RDONLY)
-    tsysMap = mmap.mmap(tsysFile, 0, prot=mmap.PROT_READ);
-    for bl in blDictL:
-        ant1Tsys4to6 = makeFloat(tsysMap[blDictL[bl][17]+12:blDictL[bl][17]+16])
-        ant1Tsys6to8 = makeFloat(tsysMap[blDictL[bl][17]+28:blDictL[bl][17]+32])
-        ant2Tsys4to6 = makeFloat(tsysMap[blDictL[bl][18]+12:blDictL[bl][18]+16])
-        ant2Tsys6to8 = makeFloat(tsysMap[blDictL[bl][18]+28:blDictL[bl][18]+32])
-        blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
-    for bl in blDictU:
-        ant1Tsys4to6 = makeFloat(tsysMap[blDictU[bl][17]+16:blDictU[bl][17]+20])
-        ant1Tsys6to8 = makeFloat(tsysMap[blDictU[bl][17]+32:blDictU[bl][17]+36])
-        ant2Tsys4to6 = makeFloat(tsysMap[blDictU[bl][18]+16:blDictU[bl][18]+20])
-        ant2Tsys6to8 = makeFloat(tsysMap[blDictU[bl][18]+32:blDictU[bl][18]+36])
-        blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+    if newFormat:
+        tsysFile = os.open(dataDir+'/tsys_read', os.O_RDONLY)
+        tsysMap = mmap.mmap(tsysFile, 0, prot=mmap.PROT_READ);
+        for bl in blDictL:
+            ant1Tsys4to6 = makeFloat(tsysMap[blDictL[bl][17]+12:blDictL[bl][17]+16])
+            ant1Tsys6to8 = makeFloat(tsysMap[blDictL[bl][17]+28:blDictL[bl][17]+32])
+            ant2Tsys4to6 = makeFloat(tsysMap[blDictL[bl][18]+12:blDictL[bl][18]+16])
+            ant2Tsys6to8 = makeFloat(tsysMap[blDictL[bl][18]+28:blDictL[bl][18]+32])
+            blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+        for bl in blDictU:
+            ant1Tsys4to6 = makeFloat(tsysMap[blDictU[bl][17]+16:blDictU[bl][17]+20])
+            ant1Tsys6to8 = makeFloat(tsysMap[blDictU[bl][17]+32:blDictU[bl][17]+36])
+            ant2Tsys4to6 = makeFloat(tsysMap[blDictU[bl][18]+16:blDictU[bl][18]+20])
+            ant2Tsys6to8 = makeFloat(tsysMap[blDictU[bl][18]+32:blDictU[bl][18]+36])
+            blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+    else: # Old format file
+        if verbose:
+            print 'Processing old-format Tsys data'
+        antLowDict  = {}
+        antHighDict = {}
+        f = open(dataDir+'/tsys_read', 'rb')
+        fSize = os.path.getsize(dataDir+'/tsys_read')
+        tsysRecLen = 400
+        nTsysRecords = fSize/tsysRecLen
+        for rec in range(nTsysRecords):
+            if ((rec % 10000) == 0) and verbose:
+                print '\t processing record %d of %d (%2.0f%% done)' % (rec, nBlRecords, 100.0*float(rec)/float(nBlRecords))
+                sys.stdout.flush()
+            data = f.read(tsysRecLen)
+            if len(data) == tsysRecLen:
+                inhid    =   makeInt(data[  0:], 4)
+                iAnt     =   makeInt(data[ 14:], 2)
+                tsysLow  = makeFloat(data[ 16:])
+                tsysHigh = makeFloat(data[208:])
+                if (inhid, iAnt) not in antLowDict:
+                    antLowDict[(inhid, iAnt)]  = tsysLow
+                    antHighDict[(inhid, iAnt)] = tsysHigh
+        for bl in blDictL:
+            inhid = blDictL[bl][0]
+            ant1  = blDictL[bl][15]
+            ant2  = blDictL[bl][16]
+            blTsysDictL[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
+        for bl in blDictU:        
+            inhid = blDictU[bl][0]
+            ant1  = blDictU[bl][15]
+            ant2  = blDictU[bl][16]
+            blTsysDictU[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
 
     ###
     ### Count the number of spectral bands
@@ -284,7 +407,10 @@ def read(dataDir):
         print 'Counting the number of bands'
     f = open(dataDir+'/sp_read', 'rb')
     fSize = os.path.getsize(dataDir+'/sp_read')
-    spRecLen = 188
+    if newFormat:
+        spRecLen = 188
+    else:
+        spRecLen = 100
     data = f.read(spRecLen)
     nSpRecords = fSize/spRecLen
     for rec in range(nSpRecords):
@@ -293,20 +419,38 @@ def read(dataDir):
             sys.stdout.flush()
         data = f.read(spRecLen)
         if len(data) == spRecLen:
-            sphid     =    makeInt(data[  0:], 4)
-            blhid     =    makeInt(data[  4:], 4)
-            inhid     =    makeInt(data[  8:], 4)
-            igq       =    makeInt(data[ 12:], 2)
-            ipq       =    makeInt(data[ 14:], 2)
-            iband     =    makeInt(data[ 16:], 2)
-            fsky      = makeDouble(data[ 36:])
-            fres      =  makeFloat(data[ 44:])
-            wt        =  makeFloat(data[ 84:])
-            flags     =    makeInt(data[ 88:], 4)
-            nch       =    makeInt(data[ 96:], 2)
-            dataoff   =    makeInt(data[100:], 4)
-            rfreq     = makeDouble(data[104:])
-            if flags != 0:
+            if newFormat:
+                sphid     =    makeInt(data[  0:], 4)
+                blhid     =    makeInt(data[  4:], 4)
+                inhid     =    makeInt(data[  8:], 4)
+                igq       =    makeInt(data[ 12:], 2)
+                ipq       =    makeInt(data[ 14:], 2)
+                iband     =    makeInt(data[ 16:], 2)
+                fsky      = makeDouble(data[ 36:])
+                fres      =  makeFloat(data[ 44:])
+                wt        =  makeFloat(data[ 84:])
+                flags     =    makeInt(data[ 88:], 4)
+                nch       =    makeInt(data[ 96:], 2)
+                dataoff   =    makeInt(data[100:], 4)
+                rfreq     = makeDouble(data[104:])
+            else:
+                sphid     =    makeInt(data[  0:], 4)
+                blhid     =    makeInt(data[  4:], 4)
+                inhid     =    makeInt(data[  8:], 4)
+                igq       =    makeInt(data[ 12:], 2)
+                ipq       =    makeInt(data[ 14:], 2)
+                iband     =    makeInt(data[ 16:], 2)
+                fsky      = makeDouble(data[ 38:])
+                fres      =  makeFloat(data[ 46:])
+                wt        =  makeFloat(data[ 58:])
+                if wt > 0:
+                    flags = 0
+                else:
+                    flags = -1
+                nch       =    makeInt(data[ 68:], 2)
+                dataoff   =    makeInt(data[ 72:], 4)
+                rfreq     = makeDouble(data[ 82:])
+            if (flags != 0) and (wt > 0):
                 wt *= -1.0
             spBigDict[(iband, blhid)] = (dataoff, wt)
             if iband not in bandList:
@@ -388,7 +532,7 @@ for band in bandList:
             header.update('groups', True)
             header.update('gcount', 0)
             header.update('pcount', 0)
-            if (band == 0) and ((49 in bandList) or (50 in bandlist)):
+            if (band == 0) and ((49 in bandList) or (50 in bandList)):
                 header.update('correlat', 'SMA-Hybrid')
             elif band < 49:
                 header.update('correlat', 'SMA-Legacy')
@@ -397,6 +541,10 @@ for band in bandList:
             header.update('fxcorver', 1)
             header.add_history('Translated to FITS-IDI by sma2casa.py')
             header.add_history('Original SMA dataset: '+dataSet[-15:])
+#            if newFormat:
+#                header.add_history('The SMA data set used the new SWARM format')
+#            else:
+#                header.add_history('The SMA data set used the old format')
             header.add_history('Project PI: '+projectPI)
 
             ###
@@ -630,6 +778,8 @@ for band in bandList:
             ### Create the SYSTEM_TEMPERATURE table
             ###
             blKeysSorted = sorted(blDict)
+#            for bl in blKeysSorted:
+#                print bl, blTsysDict[bl][0], blTsysDict[bl][1], blTsysDict[bl][2], blTsysDict[bl][3]
             blPos = 0
             scanDict = {}
             antTsysDict = {}
@@ -737,7 +887,10 @@ for band in bandList:
                 foundSpEntry = False
                 nBlFound = 0
                 scanNo  = makeInt(visMap[scanOffset:scanOffset+4],   4)
-                recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
+                if newFormat:
+                    recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
+                else:
+                    recSize = makeInt(visMap[scanOffset+8:scanOffset+12], 4)
                 if scanNo > 0:
                     for bl in blKeysSorted[blPos:]:
                         if blDict[bl][0] == scanNo:
@@ -756,8 +909,12 @@ for band in bandList:
                                 sourceList.append(inDict[scanNo][14])
                                 freqList.append(1)
                                 intList.append(inDict[scanNo][12])
-                                dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
-                                scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
+                                if newFormat:
+                                    dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
+                                    scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
+                                else:
+                                    dataoff = scanOffset+spBigDict[(band, bl)][0] + 16
+                                    scaleExp = makeInt(visMap[dataoff+8:dataoff+10], 2)
                                 if scaleExp > (2**15-1):
                                     scaleExp -= 2**16
                                 scale = (2.0**scaleExp) * sqrt(2.0)*130.0*2.0
@@ -774,10 +931,16 @@ for band in bandList:
                                 weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
                                 dataoff += 2
                                 for i in range(0, nChannels):
-                                    real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
+                                    if newFormat:
+                                        real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
+                                    else:
+                                        real = ord(visMap[dataoff+1])+(ord(visMap[dataoff  ])<<8)
                                     if real > (2**15-1):
                                         real -= 2**16
-                                    imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
+                                    if newFormat:
+                                        imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
+                                    else:
+                                        imag = ord(visMap[dataoff+3])+(ord(visMap[dataoff+2])<<8)
                                     if imag > (2**15-1):
                                         imag -= 2**16
                                     if (real == 0) and (imag == 0):
@@ -810,8 +973,11 @@ for band in bandList:
                         blPos += 1
                     if (not foundBlEntry) or (not foundSpEntry):
                         print 'Something not found scanNo = %d, band = %d, foundBl = %d, foundSp = %d' % (scanNo, band, foundBlEntry, foundSpEntry)
-                        sys.exit(0)
-                scanOffset += recSize+8
+                        sys.exit(-1)
+                if newFormat:
+                    scanOffset += recSize+8
+                else:
+                    scanOffset += recSize+16
 
             c10Format = '%dE' % (len(matrixEntry))
             c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
