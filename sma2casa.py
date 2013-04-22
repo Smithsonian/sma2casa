@@ -455,14 +455,17 @@ def read(dataDir):
             spBigDict[(iband, blhid)] = (dataoff, wt)
             if iband not in bandList:
                 bandList.append(iband)
-            if blSidebandDict[blhid] == 0:
-                wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
-                if iband not in spSmallDictL:
-                    spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
-            else:
-                wt = wt/(max(blTsysDictU[blhid][0], blTsysDictU[blhid][1])*max(blTsysDictU[blhid][2], blTsysDictU[blhid][3]))
-                if iband not in spSmallDictU:
-                    spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+            try:
+                if blSidebandDict[blhid] == 0:
+                    wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
+                    if iband not in spSmallDictL:
+                        spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+                else:
+                    wt = wt/(max(blTsysDictU[blhid][0], blTsysDictU[blhid][1])*max(blTsysDictU[blhid][2], blTsysDictU[blhid][3]))
+                    if iband not in spSmallDictU:
+                        spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+            except KeyError:
+                wt = -1.0
             if abs(wt) > maxWeight:
                 maxWeight = abs(wt)
         if inhid > maxScan:
