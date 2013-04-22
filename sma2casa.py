@@ -928,8 +928,14 @@ for band in bandList:
                                     ant1Tsys = blTsysDict[bl][0]
                                     ant2Tsys = blTsysDict[bl][2]
                                 scale *= sqrt(abs(ant1Tsys*ant2Tsys))
-                                weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
-                                dataoff += 2
+                                if newFormat:
+                                    weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
+                                else:
+                                    weight = spBigDict[(band, bl)][1]
+                                if newFormat:
+                                    dataoff += 2
+                                else:
+                                    dataoff += 10
                                 for i in range(0, nChannels):
                                     if newFormat:
                                         real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
@@ -950,8 +956,8 @@ for band in bandList:
                                         matrixEntry.append(0.0)
                                         matrixEntry.append(0.0)
                                     else:
-                                        matrixEntry.append(float(real*scale))
-                                        matrixEntry.append(float(-imag*scale))
+                                        matrixEntry.append(float(real)*scale)
+                                        matrixEntry.append(float(-imag)*scale)
                                     matrixEntry.append(weight)
                                     totalPoints += 1
                                     dataoff += 4
