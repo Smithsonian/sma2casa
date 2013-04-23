@@ -5,6 +5,8 @@ import pylab as pl
 import os
 from math import pi,floor
 
+default(importfitsidi)
+default(tflagdata)
 sidebandsToProcess = ['Lower', 'Upper']
 # Parameters for flagdata:
 
