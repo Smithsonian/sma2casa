@@ -28,7 +28,6 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-speedOfLight = 2.997925e8
 maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
@@ -37,6 +36,7 @@ trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
 chunkList = range(49)
 sidebandList = [0, 1]
+pseudoContinuumFrequency = {}
 verbose = True
 NaN = float('nan')
 totalPoints = 0
@@ -107,7 +107,7 @@ def makeDouble(data):
 def read(dataDir):
     global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
-    global antennaList, blTsysDictL, blTsysDictU, newFormat
+    global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency
 
     # Check that the directory contains all the required files
     if verbose:
@@ -456,6 +456,8 @@ def read(dataDir):
             if iband not in bandList:
                 bandList.append(iband)
             try:
+                if (nch == 1) and (blSidebandDict[blhid] not in pseudoContinuumFrequency):
+                    pseudoContinuumFrequency[blSidebandDict[blhid]] = fsky*1.0e9
                 if blSidebandDict[blhid] == 0:
                     wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
                     if iband not in spSmallDictL:
@@ -465,6 +467,7 @@ def read(dataDir):
                     if iband not in spSmallDictU:
                         spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
             except KeyError:
+                # This exception can occur if the last record to bl_read was not written, because dataCatcher was interrupted
                 wt = -1.0
             if abs(wt) > maxWeight:
                 maxWeight = abs(wt)
@@ -902,9 +905,9 @@ for band in bandList:
                             if (band, bl) in spBigDict:
                                 foundSpEntry = True
                                 matrixEntry  = []
-                                uList.append(blDict[bl][6]/speedOfLight)
-                                vList.append(blDict[bl][7]/speedOfLight)
-                                wList.append(blDict[bl][8]/speedOfLight)
+                                uList.append(blDict[bl][6]*1000.0/pseudoContinuumFrequency[sb])
+                                vList.append(blDict[bl][7]*1000.0/pseudoContinuumFrequency[sb])
+                                wList.append(blDict[bl][8]*1000.0/pseudoContinuumFrequency[sb])
                                 jDList.append(jD)
                                 timeList.append(inDict[scanNo][7]/24.0)
                                 baselineList.append(256*blDict[bl][15] + blDict[bl][16])
