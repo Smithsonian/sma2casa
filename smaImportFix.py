@@ -13,7 +13,7 @@ sidebandsToProcess = ['Lower', 'Upper']
 for sideband in sidebandsToProcess:
     # First figure out which chunks need to be processed
     chunksToProcess = []
-    for i in range(49):
+    for i in range(51):
         try:
             testFile = open('./tempFITS-IDI%s.band%d' % (sideband, i))
             print 'Chunk s%02d FITS-IDI file is present, will process' % (i)
@@ -21,7 +21,6 @@ for sideband in sidebandsToProcess:
             testFile.close()
         except IOError:
             print 'Chunk s%02d FITS-IDI file is missing, will skip' % (i)
-
     # Read the individual SMA chunks in
     for i in chunksToProcess:
         fitsidifile = './tempFITS-IDI%s.band%d' % (sideband, i)
