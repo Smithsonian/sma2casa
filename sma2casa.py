@@ -7,6 +7,7 @@ This file defines functions which will import SMA data directly into a CASA Meas
 """
 
 import numpy as np
+import makevis
 import os, sys, struct, mmap, pyfits, getopt
 from astropy.time import Time
 from math import sin, cos, pi, sqrt
@@ -28,7 +29,7 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-maxScan = 10000000
+maxScan = 100000000
 maxWeight = 0.01
 numberOfBaselines = 0
 antennaList = []
@@ -39,8 +40,6 @@ sidebandList = [0, 1]
 pseudoContinuumFrequency = {}
 verbose = True
 NaN = float('nan')
-totalPoints = 0
-totalZeros = 0
 newFormat = True
 
 def usage():
@@ -512,8 +511,7 @@ for o, a in opts:
 read(dataSet)
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
-visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
-visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
+visFileLen = makevis.open(dataSet+'/sch_read')
 for band in bandList:
     for sb in range(2):
         if (band in chunkList) and (sb in sidebandList):
@@ -888,15 +886,12 @@ for band in bandList:
             else:
                 firstGoodChannel = int(float(nChannels)*edgeTrimFraction) - 1
                 lastGoodChannel  = int(float(nChannels)*(1.0-edgeTrimFraction) + 0.5) - 1
-            while (scanOffset < len(visMap)) and (scanNo < maxScan):
+            while (scanOffset < visFileLen) and (scanNo < maxScan):
                 foundBlEntry = False
                 foundSpEntry = False
                 nBlFound = 0
-                scanNo  = makeInt(visMap[scanOffset:scanOffset+4],   4)
-                if newFormat:
-                    recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
-                else:
-                    recSize = makeInt(visMap[scanOffset+8:scanOffset+12], 4)
+                scanNo = makevis.scanno(scanOffset, newFormat);
+                recSize = makevis.recsize(scanOffset, newFormat)
                 if scanNo > 0:
                     for bl in blKeysSorted[blPos:]:
                         if blDict[bl][0] == scanNo:
@@ -917,12 +912,9 @@ for band in bandList:
                                 intList.append(inDict[scanNo][12])
                                 if newFormat:
                                     dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
-                                    scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
                                 else:
                                     dataoff = scanOffset+spBigDict[(band, bl)][0] + 16
-                                    scaleExp = makeInt(visMap[dataoff+8:dataoff+10], 2)
-                                if scaleExp > (2**15-1):
-                                    scaleExp -= 2**16
+                                scaleExp = makevis.scaleexp(dataoff, newFormat)
                                 scale = (2.0**scaleExp) * sqrt(2.0)*130.0*2.0
                                 if bl == 0:
                                     ant1Tsys = sqrt(abs(blTsysDict[bl][0]*blTsysDict[bl][1]))
@@ -938,48 +930,8 @@ for band in bandList:
                                     weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
                                 else:
                                     weight = spBigDict[(band, bl)][1]
-                                if newFormat:
-                                    dataoff += 2
-                                else:
-                                    dataoff += 10
-                                for i in range(0, nChannels):
-                                    if newFormat:
-                                        real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
-                                    else:
-                                        real = ord(visMap[dataoff+1])+(ord(visMap[dataoff  ])<<8)
-                                    if real > (2**15-1):
-                                        real -= 2**16
-                                    if newFormat:
-                                        imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
-                                    else:
-                                        imag = ord(visMap[dataoff+3])+(ord(visMap[dataoff+2])<<8)
-                                    if imag > (2**15-1):
-                                        imag -= 2**16
-                                    if (real == 0) and (imag == 0):
-                                        totalZeros += 1
-                                        print 'Band ', band, ' sideband ', sideBand, ' channel ', i, ' has 0 amplitude.'
-                                    if (weight <= 0.0) or (trimEdges and (not (firstGoodChannel <= i <= lastGoodChannel))):
-                                        matrixEntry.append(0.0)
-                                        matrixEntry.append(0.0)
-                                    else:
-                                        matrixEntry.append(float(real)*scale)
-                                        matrixEntry.append(float(-imag)*scale)
-                                    matrixEntry.append(weight)
-                                    totalPoints += 1
-                                    dataoff += 4
-                                if reverseChannelOrder and (band != 0):
-                                    # This is a chunk with an odd number of LSB downconversions, so channels must
-                                    # be reordered, because the FITS-IDI standard demands positive increments in
-                                    # frequency between channels.
-                                    swappedEntry = []
-                                    nSets = len(matrixEntry)/3
-                                    for i in range(nSets):
-                                        swappedEntry.append(matrixEntry[3*nSets - (3 + i*3)])
-                                        swappedEntry.append(matrixEntry[3*nSets - (2 + i*3)])
-                                        swappedEntry.append(matrixEntry[3*nSets - (1 + i*3)])
-                                    matrixList.append(swappedEntry)
-                                else:
-                                    matrixList.append(matrixEntry)
+                                matrixEntry = makevis.convert(nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder)
+                                matrixList.append(matrixEntry)
                                 if nBlFound == numberOfBaselines:
                                     break
                         blPos += 1
@@ -1079,5 +1031,3 @@ for band in bandList:
             if verbose:
                 print 'Writing UV_DATA table'
             pyfits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
-if verbose:
-    print totalPoints, ' visibilities were written, of which ', totalZeros, ' had zero amplitude.'
