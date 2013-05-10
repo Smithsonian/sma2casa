@@ -884,8 +884,8 @@ for band in bandList:
                 firstGoodChannel = 0
                 lastGoodChannel = 1000000
             else:
-                firstGoodChannel = int(float(nChannels)*edgeTrimFraction) - 1
-                lastGoodChannel  = int(float(nChannels)*(1.0-edgeTrimFraction) + 0.5) - 1
+                firstGoodChannel = int(float(nChannels)*edgeTrimFraction)
+                lastGoodChannel  = int(float(nChannels)*(1.0-edgeTrimFraction) + 0.5)
             while (scanOffset < visFileLen) and (scanNo < maxScan):
                 foundBlEntry = False
                 foundSpEntry = False
