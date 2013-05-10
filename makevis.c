@@ -89,7 +89,7 @@ static PyObject *makevis_scaleexp(PyObject *self, PyObject *args)
 static PyObject *makevis_convert(PyObject *self, PyObject *args)
 {
   long int offset, offsetInc;
-  int sts, nPoints, newFormat, i, trim, first, last, reverse;
+  int nPoints, newFormat, i, trim, first, last, reverse;
   int real, imag;
   double scale, weight, fReal, fImag;
   PyObject *list, *num, *pyWeight;
@@ -111,14 +111,12 @@ static PyObject *makevis_convert(PyObject *self, PyObject *args)
   }
   if (reverse) {
     offset += (nPoints-1)*4;
-    i = first;
-    first = last;
-    last = i;
     offsetInc = -4;
-  } else
+  } else {
     offsetInc = 4;
+  }
   for (i = 0; i < nPoints; i++) {
-    if ((weight < 0.0) || (trim && ((i < first) || (i > last)))) {
+    if ((weight <= 0.0) || (trim && ((i < first) || (i > last)))) {
       fReal = fImag = 0.0;
     } else {
       if (newFormat) {
