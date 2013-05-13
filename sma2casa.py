@@ -29,10 +29,12 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-maxScan = 100000000
+maxScan = 10000000
 maxWeight = 0.01
 numberOfBaselines = 0
 antennaList = []
+swappingTsys = False
+tsysMapping = range(0,11)
 trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
 chunkList = range(49)
@@ -51,6 +53,7 @@ def usage():
     print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
     print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
     print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
+    print "\t -T\t\t\t\t-T n=m means use ant m's Tsys for ant n"
     print '\t -u [--upper]\t\t\tProcess upper sideband only'
 
 def normalize0to360(angle):
@@ -398,6 +401,23 @@ def read(dataDir):
             ant1  = blDictU[bl][15]
             ant2  = blDictU[bl][16]
             blTsysDictU[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
+    if swappingTsys:
+        print 'Swapping Tsys values'
+        # Make a mapping dictionary that maps (intergration, antenna) to Tsys
+        mapping = {}
+        for bl in blDictL:
+            mapping[(blDictL[bl][0], blDictL[bl][15])] = (blTsysDictL[bl][0], blTsysDictL[bl][1])
+            mapping[(blDictL[bl][0], blDictL[bl][16])] = (blTsysDictL[bl][2], blTsysDictL[bl][3])
+        # Now use that mapping table to perform the Tsys substitution
+        for bl in blDictL:
+            blTsysDictL[bl] = (mapping[(blDictL[bl][0], tsysMapping[blDictL[bl][15]])][0],mapping[(blDictL[bl][0], tsysMapping[blDictL[bl][15]])][1], mapping[(blDictL[bl][0], tsysMapping[blDictL[bl][16]])][0], mapping[(blDictL[bl][0], tsysMapping[blDictL[bl][16]])][1])
+        mapping = {}
+        for bl in blDictU:
+            mapping[(blDictU[bl][0], blDictU[bl][15])] = (blTsysDictU[bl][0], blTsysDictU[bl][1])
+            mapping[(blDictU[bl][0], blDictU[bl][16])] = (blTsysDictU[bl][2], blTsysDictU[bl][3])
+        # Now use that mapping table to perform the Tsys substitution
+        for bl in blDictU:
+            blTsysDictU[bl] = (mapping[(blDictU[bl][0], tsysMapping[blDictU[bl][15]])][0],mapping[(blDictU[bl][0], tsysMapping[blDictU[bl][15]])][1], mapping[(blDictU[bl][0], tsysMapping[blDictU[bl][16]])][0], mapping[(blDictU[bl][0], tsysMapping[blDictU[bl][16]])][1])
 
     ###
     ### Count the number of spectral bands
@@ -480,7 +500,7 @@ if len(sys.argv) < 2:
     exit(-1)
 dataSet = sys.argv[1]
 try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:stu", ['chunks=', 'help', 'lower', 'percent=', 'silent', 'trim', 'upper'])
+    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'silent', 'trim', 'Tsys=', 'upper'])
 except getopt.GetoptError as err:
     usage()
     sys.exit(-1)
@@ -502,11 +522,20 @@ for o, a in opts:
         verbose = False
     elif o in ('-t', '--trim'):
         trimEdges = True
+    elif o in ('-T', '--Tsys'):
+        donee = int(a[0])
+        doner = int(a[2])
+        tsysMapping[donee] = doner
+        swappingTsys = True
     elif o in ('-u', '--upper'):
         sidebandList = [1]
     else:
         print o, a
         assert False, 'unhandled option'
+if verbose:
+    for a in range(1,9):
+        if a != tsysMapping[a]:
+            print 'Antenna %d will use the Tsys from antenna %d' % (a, tsysMapping[a])
 
 read(dataSet)
 for line in open(dataSet+'/projectInfo'):
