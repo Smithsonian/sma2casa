@@ -36,6 +36,23 @@ for sideband in sidebandsToProcess:
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)
 
+    # make scan numbers from unique times
+
+    for i in chunksToProcess:
+        tb.open('%s_s%02d' % (sideband, i), nomodify=False)
+        times = tb.getcol('TIME')
+        timeSet = set(times)
+        timeList = list(timeSet)
+        timeList.sort()
+        print 'Generating scan numbers from times'
+        oldScanNo=tb.getcol('SCAN_NUMBER')
+        newScanNo = oldScanNo.copy()
+        for i in range(len(times)):
+            newScanNo[i] = timeList.index(times[i]) + 1
+        tb.putcol('SCAN_NUMBER' ,newScanNo)
+        tb.unlock()
+        tb.close()
+
     # Fix up the Weights (channel 0 doesn't need fixing)
     for i in chunksToProcess:
         if i != 0:
