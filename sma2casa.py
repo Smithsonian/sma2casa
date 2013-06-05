@@ -29,7 +29,7 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-maxScan = 10000000
+maxScan = 100000000
 maxWeight = 0.01
 numberOfBaselines = 0
 antennaList = []
@@ -609,7 +609,7 @@ for band in bandList:
                 refTimeString += '-11-'
             else:
                 refTimeString += '-12-'
-            day = int(codesDict['ref_time'][0][5:6])
+            day = int(codesDict['ref_time'][0][4:6])
             refTimeString = '%s%02d' % (refTimeString, day)
             jD = Time(refTimeString, scale='utc').jd
             T = (jD - 2451545.0)/36525.0
