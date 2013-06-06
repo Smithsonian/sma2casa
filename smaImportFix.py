@@ -5,6 +5,8 @@ import pylab as pl
 import os
 from math import pi,floor
 
+useSMAScanNumbers = False
+
 default(importfitsidi)
 default(tflagdata)
 sidebandsToProcess = ['Lower', 'Upper']
@@ -36,22 +38,43 @@ for sideband in sidebandsToProcess:
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)
 
-    # make scan numbers from unique times
-
-    for i in chunksToProcess:
-        tb.open('%s_s%02d' % (sideband, i), nomodify=False)
-        times = tb.getcol('TIME')
-        timeSet = set(times)
-        timeList = list(timeSet)
-        timeList.sort()
-        print 'Generating scan numbers from times'
-        oldScanNo=tb.getcol('SCAN_NUMBER')
-        newScanNo = oldScanNo.copy()
-        for i in range(len(times)):
-            newScanNo[i] = timeList.index(times[i]) + 1
-        tb.putcol('SCAN_NUMBER' ,newScanNo)
-        tb.unlock()
-        tb.close()
+    if useSMAScanNumbers:
+        
+        # make scan numbers from unique times
+        for i in chunksToProcess:
+            tb.open('%s_s%02d' % (sideband, i), nomodify=False)
+            times = tb.getcol('TIME')
+            timeSet = set(times)
+            timeList = list(timeSet)
+            timeList.sort()
+            print 'Generating scan numbers from times'
+            oldScanNo=tb.getcol('SCAN_NUMBER')
+            newScanNo = oldScanNo.copy()
+            for i in range(len(times)):
+                newScanNo[i] = timeList.index(times[i]) + 1
+            tb.putcol('SCAN_NUMBER' ,newScanNo)
+            tb.unlock()
+            tb.close()
+    else:
+        
+        # make scan numbers from source changes
+        for i in chunksToProcess:
+            scanNumber = 0
+            lastField = -1
+            tb.open('%s_s%02d' % (sideband, i), nomodify=False)
+            fields = tb.getcol('FIELD_ID')
+            print 'Generating scan numbers from source changes'
+            oldScanNo=tb.getcol('SCAN_NUMBER')
+            newScanNo = oldScanNo.copy()
+            for i in range(len(newScanNo)):
+                if fields[i] != lastField:
+                    scanNumber += 1
+                    lastField = fields[i]
+                newScanNo[i] = scanNumber
+            tb.putcol('SCAN_NUMBER' ,newScanNo)
+            tb.unlock()
+            tb.close()
+            print 'Last scan number = ', scanNumber
 
     # Fix up the Weights (channel 0 doesn't need fixing)
     for i in chunksToProcess:
