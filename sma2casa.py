@@ -549,12 +549,13 @@ for band in bandList:
                 blDict = blDictL
                 blTsysDict = blTsysDictL
                 spSmallDict = spSmallDictL
+                lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 - 52.0e6
             else:
                 sideBand = 'Upper'
                 blDict = blDictU
                 blTsysDict = blTsysDictU
                 spSmallDict = spSmallDictU
-            lowestFSky = spSmallDict[band][2] - 52.0e6
+                lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - 52.0e6
         
             ###
             ### Make the Primary HDU
