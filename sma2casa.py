@@ -29,7 +29,7 @@ blTsysDictL = {}
 blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-maxScan = 100000000
+maxScan = 100
 maxWeight = 0.01
 numberOfBaselines = 0
 antennaList = []
@@ -67,14 +67,14 @@ def toGeocentric(X, Y, Z):
     """
     Transform antenna coordinates to FITS-IDI style GEOCENTRIC coordinates
     """
-    SMALong = 2.713594675620429
+    SMALong = -2.713594675620429
     SMALat  = 0.3459976585365961
     SMARad  = 6382.248*1000.0
     Rx = SMARad*cos(SMALong)*cos(SMALat)
     Ry = SMARad*sin(SMALong)*cos(SMALat)
     Rz = SMARad*sin(SMALat)
-    x = X*cos(SMALong) + Y*sin(SMALong) + Rx
-    y = Y*cos(SMALong) - X*sin(SMALong) + Ry
+    x = X*cos(SMALong) - Y*sin(SMALong) + Rx
+    y = Y*cos(SMALong) + X*sin(SMALong) + Ry
     z = Z + Rz
     return (x, y, z)
 
