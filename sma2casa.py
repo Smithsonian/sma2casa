@@ -683,7 +683,8 @@ for band in bandList:
             vtList = []
             vdList = []
             restList = []
-            for source in range(1,len(sourceDict)+1):
+            for sKey in sourceDict:
+                source = int(sKey)
                 iDList.append(source)
                 nameList.append(sourceDict[source][0])
                 qualList.append(0)
