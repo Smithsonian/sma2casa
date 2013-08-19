@@ -183,90 +183,6 @@ def read(dataDir):
         codesDict[codeString][icode] = payload
 
     ###
-    ### Read in the integration header information (in_read)
-    ### Produces a disctionary with integration numbers for the
-    ### keys, and tuples holding the entry values
-    ###
-    if verbose:
-        print 'Reading in_read'
-    f = open(dataDir+'/in_read', 'rb')
-    data = f.read()
-    savedSourceInfo = True
-    if newFormat:
-        inRecLen = 188
-    else:
-        inRecLen = 132
-    nInRecords = len(data)/inRecLen
-    for rec in range(nInRecords):
-        if newFormat:
-            traid     =    makeInt(data[rec*inRecLen +   0:], 4)
-            inhid     =    makeInt(data[rec*inRecLen +   4:], 4)
-            az        =  makeFloat(data[rec*inRecLen +  12:])
-            el        =  makeFloat(data[rec*inRecLen +  16:])
-            hA        =  makeFloat(data[rec*inRecLen +  20:])
-            iut       =    makeInt(data[rec*inRecLen +  24:], 2)
-            iref_time =    makeInt(data[rec*inRecLen +  26:], 2)
-            dhrs      = makeDouble(data[rec*inRecLen +  28:])
-            vc        =  makeFloat(data[rec*inRecLen +  36:])
-            sx        = makeDouble(data[rec*inRecLen +  40:])
-            sy        = makeDouble(data[rec*inRecLen +  48:])
-            sz        = makeDouble(data[rec*inRecLen +  56:])
-            rinteg    =  makeFloat(data[rec*inRecLen +  64:])
-            proid     =    makeInt(data[rec*inRecLen +  68:], 4)
-            souid     =    makeInt(data[rec*inRecLen +  72:], 4)
-            isource   =    makeInt(data[rec*inRecLen +  76:], 2)
-            ivrad     =    makeInt(data[rec*inRecLen +  78:], 2)
-            offx      =  makeFloat(data[rec*inRecLen +  80:])
-            offy      =  makeFloat(data[rec*inRecLen +  84:])
-            ira       =    makeInt(data[rec*inRecLen +  88:], 2)
-            idec      =    makeInt(data[rec*inRecLen +  90:], 2)
-            rar       = makeDouble(data[rec*inRecLen +  92:])
-            decr      = makeDouble(data[rec*inRecLen + 100:])
-            epoch     =  makeFloat(data[rec*inRecLen + 108:])
-            size      =  makeFloat(data[rec*inRecLen + 112:])
-        else: # Old format file
-            traid     =    makeInt(data[rec*inRecLen +   6:], 4)
-            inhid     =    makeInt(data[rec*inRecLen +  10:], 4)
-            az        =  makeFloat(data[rec*inRecLen +  20:])
-            el        =  makeFloat(data[rec*inRecLen +  24:])
-            hA        =  makeFloat(data[rec*inRecLen +  28:])
-            iut       =    makeInt(data[rec*inRecLen +  32:], 2)
-            iref_time =    makeInt(data[rec*inRecLen +  34:], 2)
-            dhrs      = makeDouble(data[rec*inRecLen +  36:])
-            vc        =  makeFloat(data[rec*inRecLen +  44:])
-            sx        = makeDouble(data[rec*inRecLen +  50:])
-            sy        = makeDouble(data[rec*inRecLen +  58:])
-            sz        = makeDouble(data[rec*inRecLen +  66:])
-            rinteg    =  makeFloat(data[rec*inRecLen +  74:])
-            proid     =    makeInt(data[rec*inRecLen +  78:], 4)
-            souid     =    makeInt(data[rec*inRecLen +  82:], 4)
-            isource   =    makeInt(data[rec*inRecLen +  86:], 2)
-            ivrad     =    makeInt(data[rec*inRecLen +  88:], 2)
-            offx      =  makeFloat(data[rec*inRecLen +  90:])
-            offy      =  makeFloat(data[rec*inRecLen +  94:])
-            ira       =    makeInt(data[rec*inRecLen + 100:], 2)
-            idec      =    makeInt(data[rec*inRecLen + 102:], 2)
-            rar       = makeDouble(data[rec*inRecLen + 104:])
-            decr      = makeDouble(data[rec*inRecLen + 112:])
-            epoch     =  makeFloat(data[rec*inRecLen + 120:])
-            size      =  makeFloat(data[rec*inRecLen + 128:])
-        inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
-                         rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size)
-        if souid not in sourceDict:
-            # This funny business with savedSourceInfo is a kludge - it keeps the source info from being
-            # taken from the first integration header, which usually still has the RA and Dec from the
-            # previous scan (and is therefore the header for a bad scan.   This kludge makes the code store
-            # the source info from the 2nd integration header, which should have the correct coordinates.
-            # but this is not guaranteed, so it should be fixed up later
-            if savedSourceInfo:
-                savedSourceInfo = False
-            else:
-                sourceDict[souid] = (codesDict['source'][isource], rar, decr)
-                savedSourceInfo = True
-        else:
-            savedSourceInfo = True
-
-    ###
     ### Read in bl_read
     ###
     if verbose:
@@ -422,6 +338,7 @@ def read(dataDir):
     ###
     ### Count the number of spectral bands
     ###
+    weightDict = {}
     if verbose:
         print 'Counting the number of bands'
     f = open(dataDir+'/sp_read', 'rb')
@@ -472,6 +389,7 @@ def read(dataDir):
             if (flags != 0) and (wt > 0):
                 wt *= -1.0
             spBigDict[(iband, blhid)] = (dataoff, wt)
+            weightDict[inhid] = wt;
             if iband not in bandList:
                 bandList.append(iband)
             try:
@@ -494,6 +412,78 @@ def read(dataDir):
             break
     nBands = len(bandList)
     bandList.sort()
+
+    ###
+    ### Read in the integration header information (in_read)
+    ### Produces a disctionary with integration numbers for the
+    ### keys, and tuples holding the entry values
+    ###
+    if verbose:
+        print 'Reading in_read'
+    f = open(dataDir+'/in_read', 'rb')
+    data = f.read()
+    if newFormat:
+        inRecLen = 188
+    else:
+        inRecLen = 132
+    nInRecords = len(data)/inRecLen
+    for rec in range(nInRecords):
+        if newFormat:
+            traid     =    makeInt(data[rec*inRecLen +   0:], 4)
+            inhid     =    makeInt(data[rec*inRecLen +   4:], 4)
+            az        =  makeFloat(data[rec*inRecLen +  12:])
+            el        =  makeFloat(data[rec*inRecLen +  16:])
+            hA        =  makeFloat(data[rec*inRecLen +  20:])
+            iut       =    makeInt(data[rec*inRecLen +  24:], 2)
+            iref_time =    makeInt(data[rec*inRecLen +  26:], 2)
+            dhrs      = makeDouble(data[rec*inRecLen +  28:])
+            vc        =  makeFloat(data[rec*inRecLen +  36:])
+            sx        = makeDouble(data[rec*inRecLen +  40:])
+            sy        = makeDouble(data[rec*inRecLen +  48:])
+            sz        = makeDouble(data[rec*inRecLen +  56:])
+            rinteg    =  makeFloat(data[rec*inRecLen +  64:])
+            proid     =    makeInt(data[rec*inRecLen +  68:], 4)
+            souid     =    makeInt(data[rec*inRecLen +  72:], 4)
+            isource   =    makeInt(data[rec*inRecLen +  76:], 2)
+            ivrad     =    makeInt(data[rec*inRecLen +  78:], 2)
+            offx      =  makeFloat(data[rec*inRecLen +  80:])
+            offy      =  makeFloat(data[rec*inRecLen +  84:])
+            ira       =    makeInt(data[rec*inRecLen +  88:], 2)
+            idec      =    makeInt(data[rec*inRecLen +  90:], 2)
+            rar       = makeDouble(data[rec*inRecLen +  92:])
+            decr      = makeDouble(data[rec*inRecLen + 100:])
+            epoch     =  makeFloat(data[rec*inRecLen + 108:])
+            size      =  makeFloat(data[rec*inRecLen + 112:])
+        else: # Old format file
+            traid     =    makeInt(data[rec*inRecLen +   6:], 4)
+            inhid     =    makeInt(data[rec*inRecLen +  10:], 4)
+            az        =  makeFloat(data[rec*inRecLen +  20:])
+            el        =  makeFloat(data[rec*inRecLen +  24:])
+            hA        =  makeFloat(data[rec*inRecLen +  28:])
+            iut       =    makeInt(data[rec*inRecLen +  32:], 2)
+            iref_time =    makeInt(data[rec*inRecLen +  34:], 2)
+            dhrs      = makeDouble(data[rec*inRecLen +  36:])
+            vc        =  makeFloat(data[rec*inRecLen +  44:])
+            sx        = makeDouble(data[rec*inRecLen +  50:])
+            sy        = makeDouble(data[rec*inRecLen +  58:])
+            sz        = makeDouble(data[rec*inRecLen +  66:])
+            rinteg    =  makeFloat(data[rec*inRecLen +  74:])
+            proid     =    makeInt(data[rec*inRecLen +  78:], 4)
+            souid     =    makeInt(data[rec*inRecLen +  82:], 4)
+            isource   =    makeInt(data[rec*inRecLen +  86:], 2)
+            ivrad     =    makeInt(data[rec*inRecLen +  88:], 2)
+            offx      =  makeFloat(data[rec*inRecLen +  90:])
+            offy      =  makeFloat(data[rec*inRecLen +  94:])
+            ira       =    makeInt(data[rec*inRecLen + 100:], 2)
+            idec      =    makeInt(data[rec*inRecLen + 102:], 2)
+            rar       = makeDouble(data[rec*inRecLen + 104:])
+            decr      = makeDouble(data[rec*inRecLen + 112:])
+            epoch     =  makeFloat(data[rec*inRecLen + 120:])
+            size      =  makeFloat(data[rec*inRecLen + 128:])
+        inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
+                         rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size)
+        if (souid not in sourceDict) and (weightDict[inhid] > 0.0):
+                sourceDict[souid] = (codesDict['source'][isource], rar, decr)
 
 if len(sys.argv) < 2:
     usage()
@@ -670,18 +660,18 @@ for band in bandList:
             ###
             ### Make the SOURCE table
             ###
-            iDList = []
+            iDList   = []
             nameList = []
             qualList = []
-            calList = []
+            calList  = []
             freqList = []
             fluxList = []
-            rAList = []
-            decList = []
-            eqList = []
-            velList = []
-            vtList = []
-            vdList = []
+            rAList   = []
+            decList  = []
+            eqList   = []
+            velList  = []
+            vtList   = []
+            vdList   = []
             restList = []
             for sKey in sourceDict:
                 source = int(sKey)
