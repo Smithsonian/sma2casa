@@ -38,8 +38,8 @@ for sideband in sidebandsToProcess:
     # Get the info about with pad each antenna is on
         tb.open(vis+'/ANTENNA', nomodify=False)
         stations = tb.getcol('STATION')
-        hduList = fits.open(fitsidifile);
-        arhd=hdulist[1]
+        hduList = fits.open(fitsidifile)
+        arhd=hduList[1]
         cards = arhd.header
         for ii in range(len(cards)):
             try:
