@@ -4,6 +4,7 @@ from taskinit import *
 import pylab as pl
 import os
 from math import pi,floor
+import pyfits as fits
 
 useSMAScanNumbers = False
 
@@ -34,6 +35,24 @@ for sideband in sidebandsToProcess:
         mode       ='clip'
         clipzeros  = True
         tflagdata()
+    # Get the info about with pad each antenna is on
+        tb.open(vis+'/ANTENNA', nomodify=False)
+        stations = tb.getcol('STATION')
+        hduList = fits.open(fitsidifile);
+        arhd=hdulist[1]
+        cards = arhd.header
+        for ii in range(len(cards)):
+            try:
+                if (' was on pad ' in cards[ii]) and not ('Not used' in cards[ii]) and not ('CSO' in cards[ii]) and not ('JCMT' in cards[ii]):
+                    tok = cards[ii].split()
+                    ant = int(tok[1])
+                    pad = tok[5]+' '+tok[6]
+                    stations[ant-1] = pad
+            except TypeError:
+                continue
+        tb.putcol('STATION', stations)
+        tb.unlock()
+        tb.close()
 
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)

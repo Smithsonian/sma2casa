@@ -14,10 +14,11 @@ from math import sin, cos, pi, sqrt
 #import psyco
 #psyco.full()
 
-neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo')
+neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
 nBands = 0
 bandList = []
+padsDict = {}
 spSmallDictL = {}
 spSmallDictU = {}
 spBigDict = {}
@@ -107,7 +108,7 @@ def makeDouble(data):
         return (struct.unpack('d', data[:8]))[0]
 
 def read(dataDir):
-    global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU
+    global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
     global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency
 
@@ -268,6 +269,30 @@ def read(dataDir):
         sys.exit(-1)
 
     ###
+    ### Find out which pad each antenna was on from eng_read
+    ###
+    for i in range(1,9):
+        padsDict[i] = 'Not used'
+    padsDict[9]  = 'JCMT'
+    padsDict[10] = 'CSO'
+    if verbose:
+        print 'Reading eng_read'
+    f = open(dataDir+'/eng_read', 'rb')
+    fSize = os.path.getsize(dataDir+'/eng_read')
+    engRecLen = 196
+    nEngRecords = fSize/engRecLen
+    for rec in range(16):
+        data = f.read(engRecLen)
+        if len(data) == engRecLen:
+            ant = makeInt(data[0:], 4)
+            pad = makeInt(data[4:], 4)
+            if (1 <= ant <= 8) and (1 <= pad <= 26):
+                padString = 'Pad %d' % (pad)
+                padsDict[ant] = padString
+            else:
+                print 'Illegal antenna (%d) or pad (%d) detected - this is not a very important error' % (ant, pad)
+
+    ###
     ### Pull the Tsys info out of tsys_read
     ###
     if newFormat:
@@ -389,7 +414,11 @@ def read(dataDir):
             if (flags != 0) and (wt > 0):
                 wt *= -1.0
             spBigDict[(iband, blhid)] = (dataoff, wt)
-            weightDict[inhid] = wt;
+            try:
+                if weightDict[inhid] > wt:
+                    weightDict[inhid] = wt
+            except KeyError:
+                weightDict[inhid] = wt
             if iband not in bandList:
                 bandList.append(iband)
             try:
@@ -656,6 +685,8 @@ for band in bandList:
             header.update('ref_pixl', 1,                         'Reference pixel')
             header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+            for ii in range(1,11):
+                header.add_history('Ant %d was on pad %s' % (ii, padsDict[ii]))
 
             ###
             ### Make the SOURCE table
