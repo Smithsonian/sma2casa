@@ -27,7 +27,8 @@ for sideband in sidebandsToProcess:
     # Read the individual SMA chunks in
     for i in chunksToProcess:
         fitsidifile = './tempFITS-IDI%s.band%d' % (sideband, i)
-        vis = '%s_s%02d' % (sideband, i)
+        mSFileName = '%s_s%02d' % (sideband, i)
+        vis = mSFileName
         print 'Reading in chunk s%02d (%s)' % (i, sideband)
         importfitsidi()
         # Flag the bad data points
@@ -53,6 +54,11 @@ for sideband in sidebandsToProcess:
         tb.putcol('STATION', stations)
         tb.unlock()
         tb.close()
+
+    # Make SYSCAL table with Tsys
+        print 'Making a SYSCAL table for '+mSFileName
+        tb.fromfits(tablename=mSFileName+'/SYSCAL',fitsfile=fitsidifile,whichhdu=5,nomodify=False)
+        os.system('rm '+mSFileName+'/SYSCAL/table.lock')
 
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)

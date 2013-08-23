@@ -852,13 +852,13 @@ for band in bandList:
                         if ant1 not in antList:
                             antList.append(ant1)
                             antCount += 1
-                            antTsysDict[(inh, ant1, 1)] = blTsysDict[bl][0]
-                            antTsysDict[(inh, ant1, 2)] = blTsysDict[bl][1]
+                            antTsysDict[(inh, ant1, 1)] = blTsysDict[bl][0]*0.5
+                            antTsysDict[(inh, ant1, 2)] = blTsysDict[bl][1]*0.5
                         if ant2 not in antList:
                             antList.append(ant2)
                             antCount += 1
-                            antTsysDict[(inh, ant2, 1)] = blTsysDict[bl][2]
-                            antTsysDict[(inh, ant2, 2)] = blTsysDict[bl][3]
+                            antTsysDict[(inh, ant2, 1)] = blTsysDict[bl][2]*0.5
+                            antTsysDict[(inh, ant2, 2)] = blTsysDict[bl][3]*0.5
                         blPos += 1
                         if antCount == len(antennaList):
                             break
