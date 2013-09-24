@@ -16,7 +16,8 @@ from math import sin, cos, pi, sqrt
 
 neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
-nBands = 0
+targetRx = -1
+receiverName = 230
 bandList = []
 padsDict = {}
 spSmallDictL = {}
@@ -24,13 +25,14 @@ spSmallDictU = {}
 spBigDict = {}
 antennas = {}
 codesDict = {}
+projectPI = 'Dr. John Q Project'
 inDict = {}
+blDictU = {}
 blDictL = {}
 blTsysDictL = {}
-blDictU = {}
 blTsysDictU = {}
 sourceDict = {}
-maxScan = 100000000
+maxScan = 100000000000
 maxWeight = 0.01
 numberOfBaselines = 0
 antennaList = []
@@ -108,9 +110,9 @@ def makeDouble(data):
         return (struct.unpack('d', data[:8]))[0]
 
 def read(dataDir):
-    global nBands, bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict
+    global bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict, targetRx, receiverName
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
-    global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency
+    global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency, projectPI
 
     # Check that the directory contains all the required files
     if verbose:
@@ -196,6 +198,7 @@ def read(dataDir):
         blRecLen = 118
     nBlRecords = fSize/blRecLen
     baselineList = []
+    rxList = []
     blSidebandDict = {}
     for rec in range(nBlRecords):
         if ((rec % 10000) == 0) and verbose:
@@ -247,6 +250,13 @@ def read(dataDir):
                 ant2      =    makeInt(data[ 98:], 2)
                 ant1TsysOff =  0
                 ant2TsysOff =  0
+            if irec not in rxList:
+                rxList.append(irec)
+                if (targetRx < 0) and (len(rxList) > 1):
+                    print len(rxList), 'receivers were active during this track - this script can only'
+                    print "process one receiver's data at a time."
+                    print 'You must use the -r switch on this command to specify which receiver to process.'
+                    sys.exit(-1)
             if (ant1, ant2) not in baselineList:
                 baselineList.append((ant1, ant2))
                 numberOfBaselines +=1
@@ -261,6 +271,9 @@ def read(dataDir):
             else:
                 blDictU[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
                                   blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
+    if (targetRx >= 0) and (targetRx not in rxList):
+        print 'The receiver you specified (%d) was not used in this track - aborting.' % (receiverName)
+        sys.exit(-1)
     nAnts = len(antennaList)
     if verbose:
         print '%d antennas and %d baselines seen in this data set.' % (nAnts, numberOfBaselines)
@@ -411,35 +424,44 @@ def read(dataDir):
                 nch       =    makeInt(data[ 68:], 2)
                 dataoff   =    makeInt(data[ 72:], 4)
                 rfreq     = makeDouble(data[ 82:])
+            try:
+                ibandRx = blDictU[blhid][5]
+            except:
+                ibandRx = blDictL[blhid][5]
+            if (targetRx < 0) or (ibandRx == targetRx):
+                rightRx = True
+            else:
+                rightRx = False
             if (flags != 0) and (wt > 0):
                 wt *= -1.0
-            spBigDict[(iband, blhid)] = (dataoff, wt)
+            if rightRx:
+                spBigDict[(iband, blhid)] = (dataoff, wt)
             try:
                 if weightDict[inhid] > wt:
                     weightDict[inhid] = wt
             except KeyError:
                 weightDict[inhid] = wt
-            if iband not in bandList:
-                bandList.append(iband)
-            try:
-                if (nch == 1) and (blSidebandDict[blhid] not in pseudoContinuumFrequency):
-                    pseudoContinuumFrequency[blSidebandDict[blhid]] = fsky*1.0e9
-                if blSidebandDict[blhid] == 0:
-                    wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
-                    if iband not in spSmallDictL:
-                        spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
-                else:
-                    wt = wt/(max(blTsysDictU[blhid][0], blTsysDictU[blhid][1])*max(blTsysDictU[blhid][2], blTsysDictU[blhid][3]))
-                    if iband not in spSmallDictU:
-                        spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
-            except KeyError:
-                # This exception can occur if the last record to bl_read was not written, because dataCatcher was interrupted
-                wt = -1.0
-            if abs(wt) > maxWeight:
-                maxWeight = abs(wt)
+            if rightRx:
+                if iband not in bandList:
+                    bandList.append(iband)
+                try:
+                    if (nch == 1) and (blSidebandDict[blhid] not in pseudoContinuumFrequency):
+                        pseudoContinuumFrequency[blSidebandDict[blhid]] = fsky*1.0e9
+                    if blSidebandDict[blhid] == 0:
+                        wt = wt/(max(blTsysDictL[blhid][0], blTsysDictL[blhid][1])*max(blTsysDictL[blhid][2], blTsysDictL[blhid][3]))
+                        if iband not in spSmallDictL:
+                            spSmallDictL[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+                    else:
+                        wt = wt/(max(blTsysDictU[blhid][0], blTsysDictU[blhid][1])*max(blTsysDictU[blhid][2], blTsysDictU[blhid][3]))
+                        if iband not in spSmallDictU:
+                            spSmallDictU[iband] = (nch, fres*1.0e6, fsky*1.0e9, rfreq*1.0e9)
+                except KeyError:
+                    # This exception can occur if the last record to bl_read was not written, because dataCatcher was interrupted
+                    wt = -1.0
+                if abs(wt) > maxWeight:
+                    maxWeight = abs(wt)
         if inhid > maxScan:
             break
-    nBands = len(bandList)
     bandList.sort()
 
     ###
@@ -519,7 +541,7 @@ if len(sys.argv) < 2:
     exit(-1)
 dataSet = sys.argv[1]
 try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'silent', 'trim', 'Tsys=', 'upper'])
+    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:r:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'receiver=', 'silent', 'trim', 'Tsys=', 'upper'])
 except getopt.GetoptError as err:
     usage()
     sys.exit(-1)
@@ -537,6 +559,19 @@ for o, a in opts:
     elif o in ('-p', '--percent'):
         edgeTrimFraction = float(a)/100.0
         trimEdges = True
+    elif o in ('-r', '--receiver'):
+        receiverName = int(a)
+        if receiverName == 230:
+            targetRx = 0
+        elif receiverName == 345:
+            targetRx = 1
+        elif receiverName == 400:
+            targetRx = 2
+        elif receiverName == 650:
+            targetRx = 3
+        else:
+            print 'Illegal recerver specified (%d), must be 230, 345, 400 or 650 - aborting' % (receiverName)
+            sys.exit(-1)
     elif o in ('-s', '--silent'):
         verbose = False
     elif o in ('-t', '--trim'):
@@ -555,7 +590,6 @@ if verbose:
     for a in range(1,9):
         if a != tsysMapping[a]:
             print 'Antenna %d will use the Tsys from antenna %d' % (a, tsysMapping[a])
-
 read(dataSet)
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
@@ -575,7 +609,7 @@ for band in bandList:
                 blTsysDict = blTsysDictU
                 spSmallDict = spSmallDictU
                 lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - 52.0e6
-        
+
             ###
             ### Make the Primary HDU
             ###
@@ -834,8 +868,6 @@ for band in bandList:
             ### Create the SYSTEM_TEMPERATURE table
             ###
             blKeysSorted = sorted(blDict)
-#            for bl in blKeysSorted:
-#                print bl, blTsysDict[bl][0], blTsysDict[bl][1], blTsysDict[bl][2], blTsysDict[bl][3]
             blPos = 0
             scanDict = {}
             antTsysDict = {}
@@ -931,6 +963,7 @@ for band in bandList:
             freqList     = []
             intList      = []
             matrixList   = []
+            blCount = 0
             nChannels = spSmallDict[band][0]
             if band == 0:
                 firstGoodChannel = 0
@@ -946,22 +979,28 @@ for band in bandList:
                 recSize = makevis.recsize(scanOffset, newFormat)
                 if scanNo > 0:
                     for bl in blKeysSorted[blPos:]:
-                        if blDict[bl][0] == scanNo:
+                        blCount += 1;
+                        if (targetRx < 0) or (blDict[bl][5] == targetRx):
+                            rightRx = True
+                        else:
+                            rightRx = False
+                        if (blDict[bl][0] == scanNo) and rightRx:
                             foundBlEntry = True
                             nBlFound += 1
                             if (band, bl) in spBigDict:
                                 foundSpEntry = True
                                 matrixEntry  = []
-                                uList.append(blDict[bl][6]*1000.0/pseudoContinuumFrequency[sb])
-                                vList.append(blDict[bl][7]*1000.0/pseudoContinuumFrequency[sb])
-                                wList.append(blDict[bl][8]*1000.0/pseudoContinuumFrequency[sb])
-                                jDList.append(jD)
-                                timeList.append(inDict[scanNo][7]/24.0)
-                                baselineList.append(256*blDict[bl][15] + blDict[bl][16])
-                                arrayList.append(1)
-                                sourceList.append(inDict[scanNo][14])
-                                freqList.append(1)
-                                intList.append(inDict[scanNo][12])
+                                if rightRx:
+                                    uList.append(blDict[bl][6]*1000.0/pseudoContinuumFrequency[sb])
+                                    vList.append(blDict[bl][7]*1000.0/pseudoContinuumFrequency[sb])
+                                    wList.append(blDict[bl][8]*1000.0/pseudoContinuumFrequency[sb])
+                                    jDList.append(jD)
+                                    timeList.append(inDict[scanNo][7]/24.0)
+                                    baselineList.append(256*blDict[bl][15] + blDict[bl][16])
+                                    arrayList.append(1)
+                                    sourceList.append(inDict[scanNo][14])
+                                    freqList.append(1)
+                                    intList.append(inDict[scanNo][12])
                                 if newFormat:
                                     dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
                                 else:
@@ -983,7 +1022,8 @@ for band in bandList:
                                 else:
                                     weight = spBigDict[(band, bl)][1]
                                 matrixEntry = makevis.convert(nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder)
-                                matrixList.append(matrixEntry)
+                                if rightRx:
+                                    matrixList.append(matrixEntry)
                                 if nBlFound == numberOfBaselines:
                                     break
                         blPos += 1
@@ -994,7 +1034,6 @@ for band in bandList:
                     scanOffset += recSize+8
                 else:
                     scanOffset += recSize+16
-
             c10Format = '%dE' % (len(matrixEntry))
             c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
             c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
@@ -1056,7 +1095,7 @@ for band in bandList:
             
 #            header.update('weightyp', 'NORMAL',                  'Normal 1/(uncertainty**2) weights'     )
             header.update('telescop', 'SMA',                     'Submillimeter Array, Hawaii'           )
-            header.update('observer', 'Taco'                                                             )
+            header.update('observer', projectPI                                                          )
 
             ###
             ### Create the file and write all tables
