@@ -5,6 +5,9 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 
+#define TRUE (1)
+#define FALSE (0)
+
 int fD;
 const unsigned char *mapping;
 
@@ -88,11 +91,18 @@ static PyObject *makevis_scaleexp(PyObject *self, PyObject *args)
 
 static PyObject *makevis_convert(PyObject *self, PyObject *args)
 {
+  static int firstCall = TRUE;
   long int offset, offsetInc;
   int nPoints, newFormat, i, trim, first, last, reverse;
   int real, imag;
   double scale, weight, fReal, fImag;
-  PyObject *list, *num, *pyWeight;
+  static PyObject *list;
+  PyObject *num, *pyWeight;
+
+  if (firstCall)
+    firstCall = FALSE;
+  else
+    Py_DECREF(list);
 
   if (!PyArg_ParseTuple(args, "idlidiiii",
 			&nPoints, &scale, &offset, &newFormat, &weight, &trim, &first, &last, &reverse))
