@@ -634,6 +634,7 @@ for band in bandList:
 #            else:
 #                header.add_history('The SMA data set used the old format')
             header.add_history('Project PI: '+projectPI)
+            del header
 
             ###
             ### Make the ARRAY_GEOMETRY table
@@ -722,6 +723,7 @@ for band in bandList:
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
             for ii in range(1,11):
                 header.add_history('Ant %d was on pad %s' % (ii, padsDict[ii]))
+            del header
 
             ###
             ### Make the SOURCE table
@@ -791,6 +793,7 @@ for band in bandList:
             header.update('ref_freq', lowestFSky,                'File reference frequency')
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
             header.update('ref_pixl', 1,                         'Reference pixel')
+            del header
 
             ###
             ### Create the FREQUENCY table
@@ -816,6 +819,7 @@ for band in bandList:
             header.update('ref_freq', lowestFSky,                'File reference frequency')
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
             header.update('ref_pixl', 1,                         'Reference pixel')
+            del header
 
             ###
             ### Create the ANTENNA table
@@ -864,6 +868,7 @@ for band in bandList:
             header.update('ref_freq', lowestFSky,                'File reference frequency')
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
             header.update('ref_pixl', 1,                         'Reference pixel')
+            del header
 
             ###
             ### Create the SYSTEM_TEMPERATURE table
@@ -940,6 +945,7 @@ for band in bandList:
             header.update('ref_freq', lowestFSky,                'File reference frequency')
             header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
             header.update('ref_pixl', 1,                         'Reference pixel')
+            del header
 
             ###
             ### Create the UV_DATA table
@@ -1036,6 +1042,7 @@ for band in bandList:
                 else:
                     scanOffset += recSize+16
             c10Format = '%dE' % (len(matrixEntry))
+            del matrixEntry
             c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
             c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
             c3  = pyfits.Column(name='WW',          format='1D',       array=wList       , unit='SECONDS')
@@ -1097,6 +1104,7 @@ for band in bandList:
 #            header.update('weightyp', 'NORMAL',                  'Normal 1/(uncertainty**2) weights'     )
             header.update('telescop', 'SMA',                     'Submillimeter Array, Hawaii'           )
             header.update('observer', projectPI                                                          )
+            del header
 
             ###
             ### Create the file and write all tables
@@ -1108,18 +1116,27 @@ for band in bandList:
             if verbose:
                 print 'Writing ARRAY_GEOMETRY table'
             pyfits.append(fileName, arrayGeometryHDU.data, header=arrayGeometryHDU.header)
+            del arrayGeometryHDU
             if verbose:
                 print 'Writing SOURCE table'
             pyfits.append(fileName, sourceHDU.data,        header=sourceHDU.header       )
+            del sourceHDU
             if verbose:
                 print 'Writing FREQUENCY table'
             pyfits.append(fileName, frequencyHDU.data,     header=frequencyHDU.header    )
+            del frequencyHDU
             if verbose:
                 print 'Writing ANTENNA table'
             pyfits.append(fileName, antennaHDU.data,       header=antennaHDU.header      )
+            del antennaHDU
             if verbose:
                 print 'Writing SYSTEM_TEMPERATURE table'
             pyfits.append(fileName, tsysHDU.data,          header=tsysHDU.header         )
+            del tsysHDU
             if verbose:
                 print 'Writing UV_DATA table'
             pyfits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
+            del uvDataHDU
+            hdulist.close()
+            del hdulist
+            del hdu
