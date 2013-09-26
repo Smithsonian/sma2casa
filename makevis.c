@@ -1,4 +1,4 @@
-#include "/usr/include/python2.4/Python.h"
+#include "/usr/include/python2.7/Python.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
