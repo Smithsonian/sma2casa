@@ -1,4 +1,4 @@
-#!/sma/SMAusers/taco/myPythonEnv/bin/python
+#!/usr/bin/env python
 """
 sma2casa.py
 ===========
@@ -7,12 +7,10 @@ This file defines functions which will import SMA data directly into a CASA Meas
 """
 
 import numpy as np
-import makevis
-import os, sys, struct, mmap, pyfits, getopt
+import os, sys, struct, mmap, getopt
+import astropy.io.fits as fits
 from astropy.time import Time
 from math import sin, cos, pi, sqrt
-#import psyco
-#psyco.full()
 
 neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
@@ -40,11 +38,13 @@ swappingTsys = False
 tsysMapping = range(0,11)
 trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
-chunkList = range(49)
+chunkList = range(51)
 sidebandList = [0, 1]
 pseudoContinuumFrequency = {}
 verbose = True
 NaN = float('nan')
+totalPoints = 0
+totalZeros = 0
 newFormat = True
 
 def usage():
@@ -54,6 +54,7 @@ def usage():
     print '\t -h [--help]\t\t\tPrint this message and exit'
     print '\t -l [--lower]\t\t\tProcess lower sideband only'
     print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
+    print '\t -P [--PythonOnly]\t\tDo not use the C module "makevis"'
     print '\t -r [--receiver]\t\tSpecify the receiver for multi-receiver tracks'
     print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
     print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
@@ -542,10 +543,11 @@ if len(sys.argv) < 2:
     exit(-1)
 dataSet = sys.argv[1]
 try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:r:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'receiver=', 'silent', 'trim', 'Tsys=', 'upper'])
+    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:Pr:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'PythonOnly', 'receiver=', 'silent', 'trim', 'Tsys=', 'upper'])
 except getopt.GetoptError as err:
     usage()
     sys.exit(-1)
+useMakevis = True
 for o, a in opts:
     if o in ('-c', '--chunks'):
         sChunkList = a.split(',')
@@ -557,6 +559,8 @@ for o, a in opts:
         sys.exit()
     elif o in ('-l', '--lower'):
         sidebandList = [0]
+    elif o in ('-P', '--PythonOnly'):
+        useMakevis = False
     elif o in ('-p', '--percent'):
         edgeTrimFraction = float(a)/100.0
         trimEdges = True
@@ -587,6 +591,10 @@ for o, a in opts:
     else:
         print o, a
         assert False, 'unhandled option'
+if useMakevis:
+    if verbose:
+        print 'Importing makevis'
+    import makevis
 if verbose:
     for a in range(1,9):
         if a != tsysMapping[a]:
@@ -594,7 +602,11 @@ if verbose:
 read(dataSet)
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
-visFileLen = makevis.open(dataSet+'/sch_read')
+if useMakevis:
+    visFileLen = makevis.open(dataSet+'/sch_read')
+else:
+    visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
+    visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
 for band in bandList:
     for sb in range(2):
         if (band in chunkList) and (sb in sidebandList):
@@ -614,8 +626,8 @@ for band in bandList:
             ###
             ### Make the Primary HDU
             ###
-            hdu = pyfits.PrimaryHDU()
-            hdulist=pyfits.HDUList([hdu])
+            hdu = fits.PrimaryHDU()
+            hdulist=fits.HDUList([hdu])
             header = hdulist[0].header
             header.update('groups', True)
             header.update('gcount', 0)
@@ -629,10 +641,6 @@ for band in bandList:
             header.update('fxcorver', 1)
             header.add_history('Translated to FITS-IDI by sma2casa.py')
             header.add_history('Original SMA dataset: '+dataSet[-15:])
-#            if newFormat:
-#                header.add_history('The SMA data set used the new SWARM format')
-#            else:
-#                header.add_history('The SMA data set used the old format')
             header.add_history('Project PI: '+projectPI)
             del header
 
@@ -685,15 +693,15 @@ for band in bandList:
                 antStyleList.append(0)
                 antOffList.append((0.0, 0.0, 0.0))
                 antDiameterList.append(6.0)
-            c1 = pyfits.Column(name='ANNAME',   format='8A', array=antNames                        )
-            c2 = pyfits.Column(name='STABXYZ',  format='3D', array=antList,         unit='METERS'  )
-            c3 = pyfits.Column(name='DERXYZ',   format='3E', array=velList,         unit='METERS/S')
-            c4 = pyfits.Column(name='NOSTA',    format='1J', array=antNumList                      )
-            c5 = pyfits.Column(name='MNTSTA',   format='1J', array=antStyleList                    )
-            c6 = pyfits.Column(name='STAXOF',   format='3E', array=antOffList                      )
-            c7 = pyfits.Column(name='DIAMETER', format='1E', array=antDiameterList, unit='METERS'  )
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7])
-            arrayGeometryHDU = pyfits.new_table(coldefs)
+            c1 = fits.Column(name='ANNAME',   format='8A', array=antNames                        )
+            c2 = fits.Column(name='STABXYZ',  format='3D', array=antList,         unit='METERS'  )
+            c3 = fits.Column(name='DERXYZ',   format='3E', array=velList,         unit='METERS/S')
+            c4 = fits.Column(name='NOSTA',    format='1J', array=antNumList                      )
+            c5 = fits.Column(name='MNTSTA',   format='1J', array=antStyleList                    )
+            c6 = fits.Column(name='STAXOF',   format='3E', array=antOffList                      )
+            c7 = fits.Column(name='DIAMETER', format='1E', array=antDiameterList, unit='METERS'  )
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7])
+            arrayGeometryHDU = fits.new_table(coldefs)
             header = arrayGeometryHDU.header
             header.update('extname',  'ARRAY_GEOMETRY')
             header.update('frame',    'GEOCENTRIC')
@@ -756,32 +764,32 @@ for band in bandList:
                 vtList.append('LSR')
                 vdList.append('RADIO')
                 restList.append(lowestFSky)
-            c1  = pyfits.Column(name='SOURCE_ID',   format='1J',  array=iDList  )
-            c2  = pyfits.Column(name='SOURCE',      format='16A', array=nameList)
-            c3  = pyfits.Column(name='QUAL',        format='1J',  array=qualList)
-            c4  = pyfits.Column(name='CALCODE',     format='4A',  array=calList )
-            c5  = pyfits.Column(name='FREQID',      format='1J',  array=freqList)
-            c6  = pyfits.Column(name='IFLUX',       format='E1',  array=fluxList)
-            c7  = pyfits.Column(name='QFLUX',       format='E1',  array=fluxList)
-            c8  = pyfits.Column(name='UFLUX',       format='E1',  array=fluxList)
-            c9  = pyfits.Column(name='VFLUX',       format='E1',  array=fluxList)
-            c10 = pyfits.Column(name='ALPHA',       format='E1',  array=fluxList)
-            c11 = pyfits.Column(name='FREQOFF',     format='E1',  array=fluxList)
-            c12 = pyfits.Column(name='RAEPO',       format='1D',  array=rAList  )
-            c13 = pyfits.Column(name='DECEPO',      format='1D',  array=decList )
-            c14 = pyfits.Column(name='EQUINOX',     format='8A',  array=eqList  )
-            c15 = pyfits.Column(name='RAAPP',       format='1D',  array=rAList  )
-            c16 = pyfits.Column(name='DECAPP',      format='1D',  array=decList )
-            c17 = pyfits.Column(name='SYSVEL',      format='D' ,  array=velList )
-            c18 = pyfits.Column(name='VELTYP',      format='8A',  array=vtList  )
-            c19 = pyfits.Column(name='VELDEF',      format='8A',  array=vdList  )
-            c20 = pyfits.Column(name='RESTFREQ',    format='D' ,  array=restList)
-            c21 = pyfits.Column(name='PMRA',        format='D' ,  array=fluxList)
-            c22 = pyfits.Column(name='PMDEC',       format='D' ,  array=fluxList)
-            c23 = pyfits.Column(name='PARALLAX',    format='E' ,  array=fluxList)
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16,
+            c1  = fits.Column(name='SOURCE_ID',   format='1J',  array=iDList  )
+            c2  = fits.Column(name='SOURCE',      format='16A', array=nameList)
+            c3  = fits.Column(name='QUAL',        format='1J',  array=qualList)
+            c4  = fits.Column(name='CALCODE',     format='4A',  array=calList )
+            c5  = fits.Column(name='FREQID',      format='1J',  array=freqList)
+            c6  = fits.Column(name='IFLUX',       format='E1',  array=fluxList)
+            c7  = fits.Column(name='QFLUX',       format='E1',  array=fluxList)
+            c8  = fits.Column(name='UFLUX',       format='E1',  array=fluxList)
+            c9  = fits.Column(name='VFLUX',       format='E1',  array=fluxList)
+            c10 = fits.Column(name='ALPHA',       format='E1',  array=fluxList)
+            c11 = fits.Column(name='FREQOFF',     format='E1',  array=fluxList)
+            c12 = fits.Column(name='RAEPO',       format='1D',  array=rAList  )
+            c13 = fits.Column(name='DECEPO',      format='1D',  array=decList )
+            c14 = fits.Column(name='EQUINOX',     format='8A',  array=eqList  )
+            c15 = fits.Column(name='RAAPP',       format='1D',  array=rAList  )
+            c16 = fits.Column(name='DECAPP',      format='1D',  array=decList )
+            c17 = fits.Column(name='SYSVEL',      format='D' ,  array=velList )
+            c18 = fits.Column(name='VELTYP',      format='8A',  array=vtList  )
+            c19 = fits.Column(name='VELDEF',      format='8A',  array=vdList  )
+            c20 = fits.Column(name='RESTFREQ',    format='D' ,  array=restList)
+            c21 = fits.Column(name='PMRA',        format='D' ,  array=fluxList)
+            c22 = fits.Column(name='PMDEC',       format='D' ,  array=fluxList)
+            c23 = fits.Column(name='PARALLAX',    format='E' ,  array=fluxList)
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16,
                                       c17, c18, c19, c20, c21, c22, c23])
-            sourceHDU = pyfits.new_table(coldefs)
+            sourceHDU = fits.new_table(coldefs)
             header = sourceHDU.header
             header.update('extname',  'SOURCE')
             header.update('tabrev',   1)
@@ -798,16 +806,16 @@ for band in bandList:
             ###
             ### Create the FREQUENCY table
             ###
-            c1  = pyfits.Column(name='FREQID',         format='1J',  array=[1]  )
-            c2  = pyfits.Column(name='BANDFREQ',        format='D',   array=[0.0])
-            c3  = pyfits.Column(name='CH_WIDTH',        format='1E' ,  array=[abs(spSmallDict[band][1])])
-            c4  = pyfits.Column(name='TOTAL_BANDWIDTH', format='1E',  array=[abs(spSmallDict[band][1])*float(spSmallDict[band][0])])
+            c1  = fits.Column(name='FREQID',         format='1J',  array=[1]  )
+            c2  = fits.Column(name='BANDFREQ',        format='D',   array=[0.0])
+            c3  = fits.Column(name='CH_WIDTH',        format='1E' ,  array=[abs(spSmallDict[band][1])])
+            c4  = fits.Column(name='TOTAL_BANDWIDTH', format='1E',  array=[abs(spSmallDict[band][1])*float(spSmallDict[band][0])])
             if sideBand == 'Upper':
-                c5  = pyfits.Column(name='SIDEBAND',        format='1J',  array=[1] )
+                c5  = fits.Column(name='SIDEBAND',        format='1J',  array=[1] )
             else:
-                c5  = pyfits.Column(name='SIDEBAND',        format='1J',  array=[-1])
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5])
-            frequencyHDU = pyfits.new_table(coldefs)
+                c5  = fits.Column(name='SIDEBAND',        format='1J',  array=[-1])
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5])
+            frequencyHDU = fits.new_table(coldefs)
             header = frequencyHDU.header
             header.update('extname',  'FREQUENCY')
             header.update('tabrev',   1)
@@ -839,21 +847,21 @@ for band in bandList:
                 polAList.append('L')
                 polBList.append('R')
                 polCalAList.append([0.0, 0.0])
-            c1  = pyfits.Column(name='TIME',          format='D',  array=timeList   )
-            c2  = pyfits.Column(name='TIME_INTERVAL', format='E',  array=timeIntList)
-            c3  = pyfits.Column(name='ANNAME',        format='8A', array=antNames   )
-            c4  = pyfits.Column(name='ANTENNA_NO',    format='J', array=antNumList )
-            c5  = pyfits.Column(name='ARRAY',         format='J',  array=arrayList  )
-            c6  = pyfits.Column(name='FREQID',        format='J',  array=arrayList  )
-            c7  = pyfits.Column(name='NO_LEVELS',     format='J',  array=levelsList )
-            c8  = pyfits.Column(name='POLTYA',        format='1A', array=polAList   )
-            c9  = pyfits.Column(name='POLAA',         format='E',  array=timeList   )
-            c10 = pyfits.Column(name='POLCALA',       format='2E', array=polCalAList)
-            c11 = pyfits.Column(name='POLTYB',        format='1A', array=polBList   )
-            c12 = pyfits.Column(name='POLAB',         format='E',  array=timeList   )
-            c13 = pyfits.Column(name='POLCALB',       format='2E', array=polCalAList)
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13])
-            antennaHDU = pyfits.new_table(coldefs)
+            c1  = fits.Column(name='TIME',          format='D',  array=timeList   )
+            c2  = fits.Column(name='TIME_INTERVAL', format='E',  array=timeIntList)
+            c3  = fits.Column(name='ANNAME',        format='8A', array=antNames   )
+            c4  = fits.Column(name='ANTENNA_NO',    format='J', array=antNumList )
+            c5  = fits.Column(name='ARRAY',         format='J',  array=arrayList  )
+            c6  = fits.Column(name='FREQID',        format='J',  array=arrayList  )
+            c7  = fits.Column(name='NO_LEVELS',     format='J',  array=levelsList )
+            c8  = fits.Column(name='POLTYA',        format='1A', array=polAList   )
+            c9  = fits.Column(name='POLAA',         format='E',  array=timeList   )
+            c10 = fits.Column(name='POLCALA',       format='2E', array=polCalAList)
+            c11 = fits.Column(name='POLTYB',        format='1A', array=polBList   )
+            c12 = fits.Column(name='POLAB',         format='E',  array=timeList   )
+            c13 = fits.Column(name='POLCALB',       format='2E', array=polCalAList)
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13])
+            antennaHDU = fits.new_table(coldefs)
             header = antennaHDU.header
             header.update('extname',  'ANTENNA')
             header.update('nopcal',   2)
@@ -921,18 +929,18 @@ for band in bandList:
                     tsys1List.append(antTsysDict[(inh, ant, 1)])
                     tsys2List.append(antTsysDict[(inh, ant, 2)])
                     nanList.append(NaN)
-            c1  = pyfits.Column(name='TIME',          format='1D',  array=timeList    )
-            c2  = pyfits.Column(name='TIME_INTERVAL', format='1E',  array=intervalList)
-            c3  = pyfits.Column(name='SOURCE_ID',     format='1J',  array=sourceList  )
-            c4  = pyfits.Column(name='ANTENNA_NO',    format='1J',  array=antList     )
-            c5  = pyfits.Column(name='ARRAY',         format='1J',  array=allOnesList )
-            c6  = pyfits.Column(name='FREQID',        format='1J',  array=allOnesList )
-            c7  = pyfits.Column(name='TSYS_1',        format='E',   array=tsys1List   )
-            c8  = pyfits.Column(name='TANT_1',        format='E',   array=nanList     )
-            c9  = pyfits.Column(name='TSYS_2',        format='E',   array=tsys2List   )
-            c10 = pyfits.Column(name='TANT_2',        format='E',   array=nanList     )
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
-            tsysHDU = pyfits.new_table(coldefs)
+            c1  = fits.Column(name='TIME',          format='1D',  array=timeList    )
+            c2  = fits.Column(name='TIME_INTERVAL', format='1E',  array=intervalList)
+            c3  = fits.Column(name='SOURCE_ID',     format='1J',  array=sourceList  )
+            c4  = fits.Column(name='ANTENNA_NO',    format='1J',  array=antList     )
+            c5  = fits.Column(name='ARRAY',         format='1J',  array=allOnesList )
+            c6  = fits.Column(name='FREQID',        format='1J',  array=allOnesList )
+            c7  = fits.Column(name='TSYS_1',        format='E',   array=tsys1List   )
+            c8  = fits.Column(name='TANT_1',        format='E',   array=nanList     )
+            c9  = fits.Column(name='TSYS_2',        format='E',   array=tsys2List   )
+            c10 = fits.Column(name='TANT_2',        format='E',   array=nanList     )
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
+            tsysHDU = fits.new_table(coldefs)
             header = tsysHDU.header
             header.update('extname',  'SYSTEM_TEMPERATURE')
             header.update('tabrev',   1)
@@ -978,12 +986,21 @@ for band in bandList:
             else:
                 firstGoodChannel = int(float(nChannels)*edgeTrimFraction)
                 lastGoodChannel  = int(float(nChannels)*(1.0-edgeTrimFraction) + 0.5)
+            if not useMakevis:
+                visFileLen = len(visMap)
             while (scanOffset < visFileLen) and (scanNo < maxScan):
                 foundBlEntry = False
                 foundSpEntry = False
                 nBlFound = 0
-                scanNo = makevis.scanno(scanOffset, newFormat);
-                recSize = makevis.recsize(scanOffset, newFormat)
+                if useMakevis:
+                    scanNo = makevis.scanno(scanOffset, newFormat);
+                    recSize = makevis.recsize(scanOffset, newFormat)
+                else:
+                    scanNo  = makeInt(visMap[scanOffset:scanOffset+4],   4)
+                    if newFormat:
+                        recSize = makeInt(visMap[scanOffset+4:scanOffset+8], 4)
+                    else:
+                        recSize = makeInt(visMap[scanOffset+8:scanOffset+12], 4)
                 if scanNo > 0:
                     for bl in blKeysSorted[blPos:]:
                         blCount += 1;
@@ -1012,7 +1029,15 @@ for band in bandList:
                                     dataoff = scanOffset+spBigDict[(band, bl)][0] + 8
                                 else:
                                     dataoff = scanOffset+spBigDict[(band, bl)][0] + 16
-                                scaleExp = makevis.scaleexp(dataoff, newFormat)
+                                if useMakevis:
+                                    scaleExp = makevis.scaleexp(dataoff, newFormat)
+                                else:
+                                    if newFormat:
+                                        scaleExp = makeInt(visMap[dataoff:dataoff+2], 2)
+                                    else:
+                                        scaleExp = makeInt(visMap[dataoff+8:dataoff+10], 2)
+                                    if scaleExp > (2**15-1):
+                                        scaleExp -= 2**16
                                 scale = (2.0**scaleExp) * sqrt(2.0)*130.0*2.0
                                 if bl == 0:
                                     ant1Tsys = sqrt(abs(blTsysDict[bl][0]*blTsysDict[bl][1]))
@@ -1028,9 +1053,55 @@ for band in bandList:
                                     weight = spBigDict[(band, bl)][1]/(maxWeight*ant1Tsys*ant2Tsys)
                                 else:
                                     weight = spBigDict[(band, bl)][1]
-                                matrixEntry = makevis.convert(nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder)
-                                if rightRx:
-                                    matrixList.append(matrixEntry)
+                                if useMakevis:
+                                    matrixEntry = makevis.convert(nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder)
+                                    if rightRx:
+                                        matrixList.append(matrixEntry)
+                                else:
+                                    if newFormat:
+                                        dataoff += 2
+                                    else:
+                                        dataoff += 10
+                                    for i in range(0, nChannels):
+                                        if newFormat:
+                                            real = ord(visMap[dataoff  ])+(ord(visMap[dataoff+1])<<8)
+                                        else:
+                                            real = ord(visMap[dataoff+1])+(ord(visMap[dataoff  ])<<8)
+                                        if real > (2**15-1):
+                                            real -= 2**16
+                                        if newFormat:
+                                            imag = ord(visMap[dataoff+2])+(ord(visMap[dataoff+3])<<8)
+                                        else:
+                                            imag = ord(visMap[dataoff+3])+(ord(visMap[dataoff+2])<<8)
+                                        if imag > (2**15-1):
+                                            imag -= 2**16
+                                        if (real == 0) and (imag == 0):
+                                            totalZeros += 1
+                                            print 'Band ', band, ' sideband ', sideBand, ' channel ', i, ' has 0 amplitude.'
+                                        if (weight <= 0.0) or (trimEdges and (not (firstGoodChannel <= i <= lastGoodChannel))):
+                                            matrixEntry.append(0.0)
+                                            matrixEntry.append(0.0)
+                                        else:
+                                            matrixEntry.append(float(real)*scale)
+                                            matrixEntry.append(float(-imag)*scale)
+                                        matrixEntry.append(weight)
+                                        totalPoints += 1
+                                        dataoff += 4
+                                    if reverseChannelOrder and (band != 0):
+                                        # This is a chunk with an odd number of LSB downconversions, so channels must
+                                        # be reordered, because the FITS-IDI standard demands positive increments in
+                                        # frequency between channels.
+                                        swappedEntry = []
+                                        nSets = len(matrixEntry)/3
+                                        for i in range(nSets):
+                                            swappedEntry.append(matrixEntry[3*nSets - (3 + i*3)])
+                                            swappedEntry.append(matrixEntry[3*nSets - (2 + i*3)])
+                                            swappedEntry.append(matrixEntry[3*nSets - (1 + i*3)])
+                                        if rightRx:
+                                            matrixList.append(swappedEntry)
+                                    else:
+                                        if rightRx:
+                                            matrixList.append(matrixEntry)
                                 if nBlFound == numberOfBaselines:
                                     break
                         blPos += 1
@@ -1043,18 +1114,18 @@ for band in bandList:
                     scanOffset += recSize+16
             c10Format = '%dE' % (len(matrixEntry))
             del matrixEntry
-            c1  = pyfits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
-            c2  = pyfits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
-            c3  = pyfits.Column(name='WW',          format='1D',       array=wList       , unit='SECONDS')
-            c4  = pyfits.Column(name='DATE',        format='1D',       array=jDList      , unit='DAYS'   )
-            c5  = pyfits.Column(name='TIME',        format='1D',       array=timeList    , unit='DAYS'   )
-            c6  = pyfits.Column(name='BASELINE',    format='1J',       array=baselineList                )
-            c7  = pyfits.Column(name='SOURCE_ID',   format='1J',       array=sourceList                  )
-            c8  = pyfits.Column(name='FREQID',      format='1J',       array=freqList                    )
-            c9  = pyfits.Column(name='INTTIM',      format='1E',       array=intList     , unit='SECONDS')
-            c10 = pyfits.Column(name='FLUX',        format=c10Format,  array=matrixList  , unit='UNCALIB')
-            coldefs = pyfits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
-            uvDataHDU = pyfits.new_table(coldefs)
+            c1  = fits.Column(name='UU',          format='1D',       array=uList       , unit='SECONDS')
+            c2  = fits.Column(name='VV',          format='1D',       array=vList       , unit='SECONDS')
+            c3  = fits.Column(name='WW',          format='1D',       array=wList       , unit='SECONDS')
+            c4  = fits.Column(name='DATE',        format='1D',       array=jDList      , unit='DAYS'   )
+            c5  = fits.Column(name='TIME',        format='1D',       array=timeList    , unit='DAYS'   )
+            c6  = fits.Column(name='BASELINE',    format='1J',       array=baselineList                )
+            c7  = fits.Column(name='SOURCE_ID',   format='1J',       array=sourceList                  )
+            c8  = fits.Column(name='FREQID',      format='1J',       array=freqList                    )
+            c9  = fits.Column(name='INTTIM',      format='1E',       array=intList     , unit='SECONDS')
+            c10 = fits.Column(name='FLUX',        format=c10Format,  array=matrixList  , unit='UNCALIB')
+            coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
+            uvDataHDU = fits.new_table(coldefs)
             header = uvDataHDU.header
             header.update('extname',  'UV_DATA'                                                          )
             header.update('nmatrix',  1,                          'Number of matrices'                   )
@@ -1115,27 +1186,27 @@ for band in bandList:
             hdulist.writeto(fileName)
             if verbose:
                 print 'Writing ARRAY_GEOMETRY table'
-            pyfits.append(fileName, arrayGeometryHDU.data, header=arrayGeometryHDU.header)
+            fits.append(fileName, arrayGeometryHDU.data, header=arrayGeometryHDU.header)
             del arrayGeometryHDU
             if verbose:
                 print 'Writing SOURCE table'
-            pyfits.append(fileName, sourceHDU.data,        header=sourceHDU.header       )
+            fits.append(fileName, sourceHDU.data,        header=sourceHDU.header       )
             del sourceHDU
             if verbose:
                 print 'Writing FREQUENCY table'
-            pyfits.append(fileName, frequencyHDU.data,     header=frequencyHDU.header    )
+            fits.append(fileName, frequencyHDU.data,     header=frequencyHDU.header    )
             del frequencyHDU
             if verbose:
                 print 'Writing ANTENNA table'
-            pyfits.append(fileName, antennaHDU.data,       header=antennaHDU.header      )
+            fits.append(fileName, antennaHDU.data,       header=antennaHDU.header      )
             del antennaHDU
             if verbose:
                 print 'Writing SYSTEM_TEMPERATURE table'
-            pyfits.append(fileName, tsysHDU.data,          header=tsysHDU.header         )
+            fits.append(fileName, tsysHDU.data,          header=tsysHDU.header         )
             del tsysHDU
             if verbose:
                 print 'Writing UV_DATA table'
-            pyfits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
+            fits.append(fileName, uvDataHDU.data,        header=uvDataHDU.header       )
             del uvDataHDU
             hdulist.close()
             del hdulist
