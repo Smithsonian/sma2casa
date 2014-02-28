@@ -57,7 +57,7 @@ def usage():
     print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
     print '\t -P [--PythonOnly]\t\tDo not use the C module "makevis"'
     print '\t -r [--receiver]\t\tSpecify the receiver for multi-receiver tracks'
-    print '\t -R [--RxFix]\t\tForce the script to treat the track as a single receiver track'
+    print '\t -R [--RxFix]\t\t\tForce the script to treat the track as a single receiver track'
     print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
     print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
     print "\t -T\t\t\t\t-T n=m means use ant m's Tsys for ant n"
