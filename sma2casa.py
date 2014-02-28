@@ -15,6 +15,7 @@ from math import sin, cos, pi, sqrt
 neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
 targetRx = -1
+fixRx = False # Set True to force the script to ignore receiver
 receiverName = 230
 bandList = []
 padsDict = {}
@@ -56,6 +57,7 @@ def usage():
     print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
     print '\t -P [--PythonOnly]\t\tDo not use the C module "makevis"'
     print '\t -r [--receiver]\t\tSpecify the receiver for multi-receiver tracks'
+    print '\t -R [--RxFix]\t\tForce the script to treat the track as a single receiver track'
     print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
     print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
     print "\t -T\t\t\t\t-T n=m means use ant m's Tsys for ant n"
@@ -112,7 +114,7 @@ def makeDouble(data):
         return (struct.unpack('d', data[:8]))[0]
 
 def read(dataDir):
-    global bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict, targetRx, receiverName
+    global bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict, targetRx, receiverName, fixRx
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
     global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency, projectPI
 
@@ -254,7 +256,7 @@ def read(dataDir):
                 ant2TsysOff =  0
             if irec not in rxList:
                 rxList.append(irec)
-                if (targetRx < 0) and (len(rxList) > 1):
+                if ((targetRx < 0) and (len(rxList) > 1)) and (not fixRx):
                     print len(rxList), 'receivers were active during this track - this script can only'
                     print "process one receiver's data at a time."
                     print 'You must use the -r switch on this command to specify which receiver to process.'
@@ -273,7 +275,7 @@ def read(dataDir):
             else:
                 blDictU[blhid] = (inhid, ipol, ant1rx, ant2rx, pointing, irec, u, v, w, prbl, coh, avedhrs, ampave, phaave,
                                   blsid, ant1, ant2, ant1TsysOff, ant2TsysOff)
-    if (targetRx >= 0) and (targetRx not in rxList):
+    if ((targetRx >= 0) and (targetRx not in rxList)) and (not fixRx):
         print 'The receiver you specified (%d) was not used in this track - aborting.' % (receiverName)
         sys.exit(-1)
     nAnts = len(antennaList)
@@ -430,7 +432,7 @@ def read(dataDir):
                 ibandRx = blDictU[blhid][5]
             except:
                 ibandRx = blDictL[blhid][5]
-            if (targetRx < 0) or (ibandRx == targetRx):
+            if ((targetRx < 0) or (ibandRx == targetRx)) or fixRx:
                 rightRx = True
             else:
                 rightRx = False
@@ -543,7 +545,7 @@ if len(sys.argv) < 2:
     exit(-1)
 dataSet = sys.argv[1]
 try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:Pr:stT:u", ['chunks=', 'help', 'lower', 'percent=', 'PythonOnly', 'receiver=', 'silent', 'trim', 'Tsys=', 'upper'])
+    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:Pr:RstT:u", ['chunks=', 'help', 'lower', 'percent=', 'PythonOnly', 'receiver=', 'RxFix', 'silent', 'trim', 'Tsys=', 'upper'])
 except getopt.GetoptError as err:
     usage()
     sys.exit(-1)
@@ -561,6 +563,8 @@ for o, a in opts:
         sidebandList = [0]
     elif o in ('-P', '--PythonOnly'):
         useMakevis = False
+    elif o in ('-R', '--RxFix'):
+        fixRx = True;
     elif o in ('-p', '--percent'):
         edgeTrimFraction = float(a)/100.0
         trimEdges = True
@@ -1004,7 +1008,7 @@ for band in bandList:
                 if scanNo > 0:
                     for bl in blKeysSorted[blPos:]:
                         blCount += 1;
-                        if (targetRx < 0) or (blDict[bl][5] == targetRx):
+                        if (targetRx < 0) or (blDict[bl][5] == targetRx) or fixRx:
                             rightRx = True
                         else:
                             rightRx = False
@@ -1107,6 +1111,9 @@ for band in bandList:
                         blPos += 1
                     if (not foundBlEntry) or (not foundSpEntry):
                         print 'Something not found scanNo = %d, band = %d, foundBl = %d, foundSp = %d' % (scanNo, band, foundBlEntry, foundSpEntry)
+                        print '\n\nThis can occur if a single receiver track has somes scans which are marked as'
+                        print 'belonging to a receiver that was not in use.    If this was a single receiver'
+                        print 'track, try running the script again with the -R option.'
                         sys.exit(-1)
                 if newFormat:
                     scanOffset += recSize+8
