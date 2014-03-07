@@ -441,7 +441,7 @@ def read(dataDir):
             if rightRx:
                 spBigDict[(iband, blhid)] = (dataoff, wt)
             try:
-                if weightDict[inhid] > wt:
+                if weightDict[inhid] < wt:
                     weightDict[inhid] = wt
             except KeyError:
                 weightDict[inhid] = wt

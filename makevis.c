@@ -1,4 +1,4 @@
-#include "/usr/include/python2.7/Python.h"
+#include "/sma/SMAusers/taco/anaconda/pkgs/python-2.7.6-1/include/python2.7/Python.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -139,7 +139,7 @@ static PyObject *makevis_convert(PyObject *self, PyObject *args)
       if (real > 32767)
 	real -= 65536;
       if (imag > 32767)
-	imag-= 65536;
+	imag -= 65536;
       fReal = ((double)real)*scale;
       fImag = ((double)-imag)*scale;
     }
