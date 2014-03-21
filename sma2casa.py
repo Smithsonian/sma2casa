@@ -1042,7 +1042,7 @@ for band in bandList:
                                         scaleExp = makeInt(visMap[dataoff+8:dataoff+10], 2)
                                     if scaleExp > (2**15-1):
                                         scaleExp -= 2**16
-                                scale = (2.0**scaleExp) * sqrt(2.0)*130.0*2.0
+                                scale = (2.0**scaleExp) * sqrt(2.0*pi)*130.0*2.0
                                 if bl == 0:
                                     ant1Tsys = sqrt(abs(blTsysDict[bl][0]*blTsysDict[bl][1]))
                                     ant2Tsys = sqrt(abs(blTsysDict[bl][2]*blTsysDict[bl][3]))
