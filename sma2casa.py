@@ -757,8 +757,11 @@ for band in bandList:
             vtList   = []
             vdList   = []
             restList = []
+            validSourceNumbers = []
             for sKey in sourceDict:
                 source = int(sKey)
+                if not source in validSourceNumbers:
+                    validSourceNumbers.append(source)
                 iDList.append(source)
                 nameList.append(sourceDict[source][0])
                 qualList.append(0)
@@ -1029,7 +1032,12 @@ for band in bandList:
                                     timeList.append(inDict[scanNo][7]/24.0)
                                     baselineList.append(256*blDict[bl][15] + blDict[bl][16])
                                     arrayList.append(1)
-                                    sourceList.append(inDict[scanNo][14])
+                                    if inDict[scanNo][14] in validSourceNumbers:
+                                        sourceList.append(inDict[scanNo][14])
+                                    else:
+                                        print 'Source %d is not in valid list - substituting %d' % (inDict[scanNo][14],
+                                                                                                    validSourceNumbers[0])
+                                        sourceList.append(validSourceNumbers[0])
                                     freqList.append(1)
                                     intList.append(inDict[scanNo][12])
                                 if newFormat:
