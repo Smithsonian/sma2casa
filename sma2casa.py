@@ -7,10 +7,13 @@ This file defines functions which will import SMA data directly into a CASA Meas
 """
 
 import numpy as np
-import os, sys, struct, mmap, getopt
+import os, sys, struct, mmap, getopt, argparse
 import astropy.io.fits as fits
 from astropy.time import Time
 from math import sin, cos, pi, sqrt
+
+def csv(value):
+    return map(int, value.split(","))
 
 neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
@@ -540,61 +543,62 @@ def read(dataDir):
         if (souid not in sourceDict) and (weightDict[inhid] > 0.0):
                 sourceDict[souid] = (codesDict['source'][isource], rar, decr)
 
-if len(sys.argv) < 2:
-    usage()
-    exit(-1)
-dataSet = sys.argv[1]
-try:
-    opts, args = getopt.getopt(sys.argv[2:], "c:hlp:Pr:RstT:u", ['chunks=', 'help', 'lower', 'percent=', 'PythonOnly', 'receiver=', 'RxFix', 'silent', 'trim', 'Tsys=', 'upper'])
-except getopt.GetoptError as err:
-    usage()
-    sys.exit(-1)
-useMakevis = True
-for o, a in opts:
-    if o in ('-c', '--chunks'):
-        sChunkList = a.split(',')
-        chunkList = []
-        for chunk in sChunkList:
-            chunkList.append(int(chunk))
-    elif o in ('-h', '--help'):
-        usage()
-        sys.exit()
-    elif o in ('-l', '--lower'):
-        sidebandList = [0]
-    elif o in ('-P', '--PythonOnly'):
-        useMakevis = False
-    elif o in ('-R', '--RxFix'):
-        fixRx = True;
-    elif o in ('-p', '--percent'):
-        edgeTrimFraction = float(a)/100.0
-        trimEdges = True
-    elif o in ('-r', '--receiver'):
-        receiverName = int(a)
-        if receiverName == 230:
-            targetRx = 0
-        elif receiverName == 345:
-            targetRx = 1
-        elif receiverName == 400:
-            targetRx = 2
-        elif receiverName == 650:
-            targetRx = 3
-        else:
-            print 'Illegal recerver specified (%d), must be 230, 345, 400 or 650 - aborting' % (receiverName)
+parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description='Convert an SMA MIR format dataset into a set of FITS-IDI files which may be imported into CASA.')
+parser.add_argument('dataset',           help='The data directory to process (i.e. /sma/rtdata/...)')
+parser.add_argument('-c', '--chunk',     help='Chunk(s) to process (comma separated list)',           type=csv)
+group1 = parser.add_mutually_exclusive_group()
+group1.add_argument('-l', '--lower',     help='Process lower sideband only',                  action='store_true')
+parser.add_argument('-p', '--percent',   help='Percentage to trim on band edge (default = %0.0f) - implies -t' % (edgeTrimFraction*100.0),
+                    type=float)
+group1.add_argument('-P', '--PythonOnly', help='Do not use the C module "makevis" - use pure Python (slow)', action='store_true')
+parser.add_argument('-r', '--receiver',  help='Specify the receiver (required for multi-receiver tracks)', type=int, choices=[230,345,400,650])
+parser.add_argument('-R', '--RxFix',     help='Force the script to treat the track as a single receiver track', action='store_true')
+parser.add_argument('-s', '--silent',    help='Run silently unless an error occurs', action='store_true')
+parser.add_argument('-t', '--trim',      help='Set the amplitude at chunk edges to 0.0', action='store_true')
+parser.add_argument('-T', '--Tsys',      help="-T n=m means use ant m's Tsys for ant n")
+group1.add_argument('-u', '--upper',     help='Process upper sideband only',                  action='store_true')
+
+args = parser.parse_args()
+dataSet = args.dataset
+if args.chunk:
+    chunkList = args.chunk
+    for chunk in chunkList:
+        if (chunk < 0) or (chunk > 50):
+            print 'Illegal chunk number', chunk,'specified - aborting'
             sys.exit(-1)
-    elif o in ('-s', '--silent'):
-        verbose = False
-    elif o in ('-t', '--trim'):
-        trimEdges = True
-    elif o in ('-T', '--Tsys'):
-        donee = int(a[0])
-        doner = int(a[2])
-        tsysMapping[donee] = doner
-        swappingTsys = True
-    elif o in ('-u', '--upper'):
-        sidebandList = [1]
+if args.lower:
+    sidebandList = [0]
+if args.upper:
+    sidebandList = [1]
+if args.percent:
+    edgeTrimFraction = args.percent/100.0
+    trimEdges = True
+if args.PythonOnly:
+    useMakevis = False
+else:
+    useMakevis = True
+if args.receiver:
+    receiverName = args.receiver
+    if receiverName == 230:
+        targetRx = 0
+    elif receiverName == 345:
+        targetRx = 1
+    elif receiverName == 400:
+        targetRx = 2
     else:
-        print o, a
-        assert False, 'unhandled option'
+        targetRx = 3
+if args.RxFix:
+    fixRx = True
+if args.silent:
+    verbose = False
+if args.trim:
+    trimEdges = True
+if args.Tsys:
+    donee = int(args.Tsys[0])
+    doner = int(args.Tsys[2])
+    tsysMapping[donee] = doner
+    swappingTsys = True
 if useMakevis:
     if verbose:
         print 'Importing makevis'
@@ -633,16 +637,16 @@ for band in bandList:
             hdu = fits.PrimaryHDU()
             hdulist=fits.HDUList([hdu])
             header = hdulist[0].header
-            header.update('groups', True)
-            header.update('gcount', 0)
-            header.update('pcount', 0)
+            header['groups'] = True
+            header['gcount'] = 0
+            header['pcount'] = 0
             if (band == 0) and ((49 in bandList) or (50 in bandList)):
-                header.update('correlat', 'SMA-Hybrid')
+                header['correlat'] = 'SMA-Hybrid'
             elif band < 49:
-                header.update('correlat', 'SMA-Legacy')
+                header['correlat'] = 'SMA-Legacy'
             else:
-                header.update('correlat', 'SMA-SWARM')
-            header.update('fxcorver', 1)
+                header['correlat'] = 'SMA-SWARM'
+            header['fxcorver'] = 1
             header.add_history('Translated to FITS-IDI by sma2casa.py')
             header.add_history('Original SMA dataset: '+dataSet[-15:])
             header.add_history('Project PI: '+projectPI)
@@ -705,34 +709,34 @@ for band in bandList:
             c6 = fits.Column(name='STAXOF',   format='3E', array=antOffList                      )
             c7 = fits.Column(name='DIAMETER', format='1E', array=antDiameterList, unit='METERS'  )
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7])
-            arrayGeometryHDU = fits.new_table(coldefs)
+            arrayGeometryHDU = fits.BinTableHDU.from_columns(coldefs)
             header = arrayGeometryHDU.header
-            header.update('extname',  'ARRAY_GEOMETRY')
-            header.update('frame',    'GEOCENTRIC')
-            header.update('arrnam',   'SMA')
-            header.update('tabrev',   1)
-            header.update('obscode',  ' ');
-            header.update('extver',   1,                         'Array number')
-            header.update('arrayx',   0.0,                       'Array origin x coordinate')
-            header.update('arrayy',   0.0,                       'Array origin y coordinate')
-            header.update('arrayz',   0.0,                       'Array origin z coordinate')
-            header.update('numorb',   0,                         'Number of orbital parameters')
-            header.update('polarx',   0.0,                       'x coordinate of north pole (arcsec)')
-            header.update('polary',   0.0,                       'y coordinate of north pole (arcsec)')
-            header.update('freq',     lowestFSky,                'Reference frequency')
-            header.update('timesys',  'UTC',                     'Time system')
-            header.update('degpdy' ,  0.0,                       'Earth rotation rate')
-            header.update('ut1utc' ,  0.0,                       'UT1 - UTC (seconds) - PLACEHOLDER')
-            header.update('iatutc' ,  0.0,                       'IAT - UTC (seconds) - PLACEHOLDER')
-            header.update('rdate',    refTimeString,             'Reference date')
-            header.update('gstia0',   gST,                       'GST at 0h on reference date (degrees)')
-            header.update('no_stkd',  1,                         'Number of Stokes parameters')
-            header.update('stk_1',    -2,                        'First Stokes parameter')
-            header.update('no_band',  1,                         'Number of bands')
-            header.update('ref_freq', lowestFSky,                'File reference frequency')
-            header.update('ref_pixl', 1,                         'Reference pixel')
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
+            header['extname']  = 'ARRAY_GEOMETRY'
+            header['frame']    = 'GEOCENTRIC'
+            header['arrnam']   = 'SMA'
+            header['tabrev']   = 1
+            header['obscode']  =  ' '
+            header['extver']   = (1,                         'Array number')
+            header['arrayx']   = (0.0,                       'Array origin x coordinate')
+            header['arrayy']   = (0.0,                       'Array origin y coordinate')
+            header['arrayz']   = (0.0,                       'Array origin z coordinate')
+            header['numorb']   = (0,                         'Number of orbital parameters')
+            header['polarx']   = (0.0,                       'x coordinate of north pole (arcsec)')
+            header['polary']   = (0.0,                       'y coordinate of north pole (arcsec)')
+            header['freq']     = (lowestFSky,                'Reference frequency')
+            header['timesys']  = ('UTC',                     'Time system')
+            header['degpdy']   = (0.0,                       'Earth rotation rate')
+            header['ut1utc']   = (0.0,                       'UT1 - UTC (seconds) - PLACEHOLDER')
+            header['iatutc']   = (0.0,                       'IAT - UTC (seconds) - PLACEHOLDER')
+            header['rdate']    = (refTimeString,             'Reference date')
+            header['gstia0']   = (gST,                       'GST at 0h on reference date (degrees)')
+            header['no_stkd']  = (1,                         'Number of Stokes parameters')
+            header['stk_1']    = (-2,                        'First Stokes parameter')
+            header['no_band']  = (1,                         'Number of bands')
+            header['ref_freq'] = (lowestFSky,                'File reference frequency')
+            header['ref_pixl'] = (1,                         'Reference pixel')
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels')
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth')
             for ii in range(1,11):
                 header.add_history('Ant %d was on pad %s' % (ii, padsDict[ii]))
             del header
@@ -793,18 +797,18 @@ for band in bandList:
             c23 = fits.Column(name='PARALLAX',    format='E' ,  array=fluxList)
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16,
                                       c17, c18, c19, c20, c21, c22, c23])
-            sourceHDU = fits.new_table(coldefs)
+            sourceHDU = fits.BinTableHDU.from_columns(coldefs)
             header = sourceHDU.header
-            header.update('extname',  'SOURCE')
-            header.update('tabrev',   1)
-            header.update('obscode',  ' ');
-            header.update('no_stkd',  1,                         'Number of Stokes parameters')
-            header.update('stk_1',    -2,                        'First Stokes parameter')
-            header.update('no_band',  1,                         'Number of bands')
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
-            header.update('ref_freq', lowestFSky,                'File reference frequency')
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
-            header.update('ref_pixl', 1,                         'Reference pixel')
+            header['extname']  =  'SOURCE'
+            header['tabrev']   =  1
+            header['obscode']  = ' '
+            header['no_stkd']  = (1,                         'Number of Stokes parameters')
+            header['stk_1']    = (-2,                        'First Stokes parameter')
+            header['no_band']  = (1,                         'Number of bands')
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels')
+            header['ref_freq'] = (lowestFSky,                'File reference frequency')
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth')
+            header['ref_pixl'] = (1,                         'Reference pixel')
             del header
 
             ###
@@ -819,18 +823,18 @@ for band in bandList:
             else:
                 c5  = fits.Column(name='SIDEBAND',        format='1J',  array=[-1])
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5])
-            frequencyHDU = fits.new_table(coldefs)
+            frequencyHDU = fits.BinTableHDU.from_columns(coldefs)
             header = frequencyHDU.header
-            header.update('extname',  'FREQUENCY')
-            header.update('tabrev',   1)
-            header.update('obscode',  ' ');
-            header.update('no_stkd',  1,                         'Number of Stokes parameters')
-            header.update('stk_1',    -2,                        'First Stokes parameter')
-            header.update('no_band',  1,                         'Number of bands')
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
-            header.update('ref_freq', lowestFSky,                'File reference frequency')
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
-            header.update('ref_pixl', 1,                         'Reference pixel')
+            header['extname']  =  'FREQUENCY'
+            header['tabrev']   =   1
+            header['obscode']  =  ' '
+            header['no_stkd']  = (1,                         'Number of Stokes parameters')
+            header['stk_1']    = (-2,                        'First Stokes parameter')
+            header['no_band']  = (1,                         'Number of bands')
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels')
+            header['ref_freq'] = (lowestFSky,                'File reference frequency')
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth')
+            header['ref_pixl'] = (1,                         'Reference pixel')
             del header
 
             ###
@@ -865,21 +869,20 @@ for band in bandList:
             c12 = fits.Column(name='POLAB',         format='E',  array=timeList   )
             c13 = fits.Column(name='POLCALB',       format='2E', array=polCalAList)
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13])
-            antennaHDU = fits.new_table(coldefs)
+            antennaHDU = fits.BinTableHDU.from_columns(coldefs)
             header = antennaHDU.header
-            header.update('extname',  'ANTENNA')
-            header.update('nopcal',   2)
-            header.update('poltype', 'APPROX')
-
-            header.update('tabrev',   1)
-            header.update('obscode',  ' ');
-            header.update('no_stkd',  1,                         'Number of Stokes parameters')
-            header.update('stk_1',    -2,                        'First Stokes parameter')
-            header.update('no_band',  1,                         'Number of bands')
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
-            header.update('ref_freq', lowestFSky,                'File reference frequency')
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
-            header.update('ref_pixl', 1,                         'Reference pixel')
+            header['extname']  =  'ANTENNA'
+            header['nopcal']   =   2
+            header['poltype']  = 'APPROX'
+            header['tabrev']   =   1
+            header['obscode']  =  ' '
+            header['no_stkd']  = (1,                         'Number of Stokes parameters')
+            header['stk_1']    = (-2,                        'First Stokes parameter')
+            header['no_band']  = (1,                         'Number of bands')
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels')
+            header['ref_freq'] = (lowestFSky,                'File reference frequency')
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth')
+            header['ref_pixl'] = (1,                         'Reference pixel')
             del header
 
             ###
@@ -944,19 +947,19 @@ for band in bandList:
             c9  = fits.Column(name='TSYS_2',        format='E',   array=tsys2List   )
             c10 = fits.Column(name='TANT_2',        format='E',   array=nanList     )
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
-            tsysHDU = fits.new_table(coldefs)
+            tsysHDU = fits.BinTableHDU.from_columns(coldefs)
             header = tsysHDU.header
-            header.update('extname',  'SYSTEM_TEMPERATURE')
-            header.update('tabrev',   1)
-            header.update('no_pol', 2)
-            header.update('obscode',  ' ');
-            header.update('no_stkd',  1,                         'Number of Stokes parameters')
-            header.update('stk_1',    -2,                        'First Stokes parameter')
-            header.update('no_band',  1,                         'Number of bands')
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels')
-            header.update('ref_freq', lowestFSky,                'File reference frequency')
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth')
-            header.update('ref_pixl', 1,                         'Reference pixel')
+            header['extname']  = 'SYSTEM_TEMPERATURE'
+            header['tabrev']   =  1
+            header['no_pol']   = 2
+            header['obscode']  = ' '
+            header['no_stkd']  = (1,                         'Number of Stokes parameters')
+            header['stk_1']    = (-2,                        'First Stokes parameter')
+            header['no_band']  = (1,                         'Number of bands')
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels')
+            header['ref_freq'] = (lowestFSky,                'File reference frequency')
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth')
+            header['ref_pixl'] = (1,                         'Reference pixel')
             del header
 
             ###
@@ -1132,56 +1135,56 @@ for band in bandList:
             c9  = fits.Column(name='INTTIM',      format='1E',       array=intList     , unit='SECONDS')
             c10 = fits.Column(name='FLUX',        format=c10Format,  array=matrixList  , unit='UNCALIB')
             coldefs = fits.ColDefs([c1, c2, c3, c4, c5, c6, c7, c8, c9, c10])
-            uvDataHDU = fits.new_table(coldefs)
+            uvDataHDU = fits.BinTableHDU.from_columns(coldefs)
             header = uvDataHDU.header
-            header.update('extname',  'UV_DATA'                                                          )
-            header.update('nmatrix',  1,                          'Number of matrices'                   )
-            header.update('tmatx10',  'T'                                                                )
-            header.update('maxis',    6,                          'Number of matix axes'                 )
-            header.update('maxis1',   3,                          'Number of data points on complex axis')
-            header.update('ctype1',   'COMPLEX',                  'Type of axis 1'                       )
-            header.update('cdelt1',   1.0                                                                )
-            header.update('crval1',   1.0                                                                )
-            header.update('crpix1',   1.0                                                                )
-            header.update('maxis2',   1,                          'Number of data points on Stokes axis' )
-            header.update('ctype2',   'STOKES',                   'Type of axis 2'                       )
-            header.update('cdelt2',   0.0                                                                )
-            header.update('crval2',   -2.0                                                               )
-            header.update('crpix2',   1.0                                                                )
-            header.update('maxis3',   spSmallDict[band][0],       'Number of data points on Freq axis'   )
-            header.update('ctype3',   'FREQ',                     'Type of axis 3'                       )
-            header.update('cdelt3',   abs(spSmallDict[band][1]),  'Channel spacing in Hz'                )
-            header.update('crval3',   lowestFSky,                 'Frequency of reference pixel'         )
-            header.update('crpix3',   1.0                                                                )
-            header.update('maxis4',   1,                          'Number of data points on Band axis  ' )
-            header.update('ctype4',   'BAND',                     'Type of axis 4'                       )
-            header.update('cdelt4',   1.0                                                                )
-            header.update('crval4',   1.0                                                                )
-            header.update('crpix4',   1.0                                                                )
-            header.update('maxis5',   1,                          'Number of data points on RA axis'     )
-            header.update('ctype5',   'RA',                       'Type of axis 5'                       )
-            header.update('cdelt5',   1.0                                                                )
-            header.update('crval5',   0.0,                        'Must be 0 for a multisource file'     )
-            header.update('crpix5',   1.0                                                                )
-            header.update('maxis6',   1,                          'Number of data points on Dec axis'    )
-            header.update('ctype6',   'DEC',                      'Type of axis 6'                       )
-            header.update('cdelt6',   1.0                                                                )
-            header.update('crval6',   0.0,                        'Must be 0 for a multisource file'     )
-            header.update('crpix6',   1.0                                                                )
+            header['extname']  = 'UV_DATA'
+            header['nmatrix']  = (1,                          'Number of matrices'                   )
+            header['tmatx10']  = ('T'                                                                )
+            header['maxis']    = (6,                          'Number of matix axes'                 )
+            header['maxis1']   = (3,                          'Number of data points on complex axis')
+            header['ctype1']   = ('COMPLEX',                  'Type of axis 1'                       )
+            header['cdelt1']   = 1.0
+            header['crval1']   = 1.0
+            header['crpix1']   = 1.0
+            header['maxis2']   = (1,                          'Number of data points on Stokes axis' )
+            header['ctype2']   = ('STOKES',                   'Type of axis 2'                       )
+            header['cdelt2']   = 0.0
+            header['crval2']   = -2.0
+            header['crpix2']   = 1.0
+            header['maxis3']   = (spSmallDict[band][0],       'Number of data points on Freq axis'   )
+            header['ctype3']   = ('FREQ',                     'Type of axis 3'                       )
+            header['cdelt3']   = (abs(spSmallDict[band][1]),  'Channel spacing in Hz'                )
+            header['crval3']   = (lowestFSky,                 'Frequency of reference pixel'         )
+            header['crpix3']   = 1.0
+            header['maxis4']   = (1,                          'Number of data points on Band axis  ' )
+            header['ctype4']   = ('BAND',                     'Type of axis 4'                       )
+            header['cdelt4']   = 1.0
+            header['crval4']   = 1.0
+            header['crpix4']   = 1.0
+            header['maxis5']   = (1,                          'Number of data points on RA axis'     )
+            header['ctype5']   = ('RA',                       'Type of axis 5'                       )
+            header['cdelt5']   = 1.0
+            header['crval5']   = (0.0,                        'Must be 0 for a multisource file'     )
+            header['crpix5']   = 1.0
+            header['maxis6']   = (1,                          'Number of data points on Dec axis'    )
+            header['ctype6']   = ('DEC',                      'Type of axis 6'                       )
+            header['cdelt6']   = 1.0
+            header['crval6']   = (0.0,                        'Must be 0 for a multisource file'     )
+            header['crpix6']   = 1.0
             
-            header.update('tabrev',   2                                                                  )
-            header.update('obscode',  ' '                                                                )
-            header.update('no_stkd',  1,                         'Number of Stokes parameters'           )
-            header.update('stk_1',    -2,                        'First Stokes parameter'                )
-            header.update('no_band',  1,                         'Number of bands'                       )
-            header.update('no_chan',  spSmallDict[band][0],      'The number of spectral channels'       )
-            header.update('ref_freq', lowestFSky,                'File reference frequency'              )
-            header.update('chan_bw',  abs(spSmallDict[band][1]), 'The channel bandwidth'                 )
-            header.update('ref_pixl', 1,                         'Reference pixel'                       )
+            header['tabrev']   = 2
+            header['obscode']  = ' '
+            header['no_stkd']  = (1,                         'Number of Stokes parameters'           )
+            header['stk_1']    = (-2,                        'First Stokes parameter'                )
+            header['no_band']  = (1,                         'Number of bands'                       )
+            header['no_chan']  = (spSmallDict[band][0],      'The number of spectral channels'       )
+            header['ref_freq'] = (lowestFSky,                'File reference frequency'              )
+            header['chan_bw']  = (abs(spSmallDict[band][1]), 'The channel bandwidth'                 )
+            header['ref_pixl'] = 1
             
-#            header.update('weightyp', 'NORMAL',                  'Normal 1/(uncertainty**2) weights'     )
-            header.update('telescop', 'SMA',                     'Submillimeter Array, Hawaii'           )
-            header.update('observer', projectPI                                                          )
+#            header['weightyp'] = ('NORMAL',                  'Normal 1/(uncertainty**2) weights'     )
+            header['telescop'] = ('SMA',                     'Submillimeter Array, Hawaii'           )
+            header['observer'] = projectPI
             del header
 
             ###
