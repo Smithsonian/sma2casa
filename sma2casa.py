@@ -7,7 +7,7 @@ This file defines functions which will import SMA data directly into a CASA Meas
 """
 
 import numpy as np
-import os, sys, struct, mmap, getopt, argparse
+import os, sys, struct, mmap, argparse
 import astropy.io.fits as fits
 from astropy.time import Time
 from math import sin, cos, pi, sqrt
