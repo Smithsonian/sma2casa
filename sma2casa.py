@@ -15,6 +15,54 @@ from math import sin, cos, pi, sqrt
 def csv(value):
     return map(int, value.split(","))
 
+def printChunkSyntax(value):
+    print 'Syntax error on chunk specification', value, '- aborting'
+    print 'New chunks must be specified with the following syntax:'
+    print 'hardwareChunk:startChan:endChan:numberAve'
+    print 'Where hardware is the correlator hardware cunk number (1 through 50)'
+    print 'startChan is the first channel of hardwareChunk to be included in the new chunk'
+    print 'endChan is the last channel of hardwareChunk to be included in the new chunk'
+    print 'and numberAve is the number of channels to vector average when producing'
+    print 'the new chunk.'
+    print '(1+endChan-startChan)/numberAve must be an integer.'
+    print 'Example: 50:1024:14335:128 will produce'
+    print 'a new chunk from the hardware chunk s50, using channels 1024 through 14335'
+    print 'and vector averaging sets of 128 channels to produce 104 output channels'
+    print 'The first channel in a hardware chunk is numbered 0, not 1.'
+    print 'The -n and its arguments must be the last items on the command line because'
+    print 'the parser chews up any additional parameters and tries to interpret them'
+    print 'as chunk specifications.'
+    sys.exit(-1)
+
+newChunks = {}
+nextNewChunkNumber = 51
+
+def chunkSpec(value):
+    global newChunks, nextNewChunkNumber
+
+    nNewChunks = len(value)
+    tok = value.split(':')
+    if len(tok) < 3:
+        printChunkSyntax(value)
+    sourceChunkNumber = int(tok[0])
+    if not (1 <= sourceChunkNumber <= 50):
+        printChunkSyntax(value)
+    startChan = int(tok[1])
+    if not (0 <= startChan < 16384):
+        printChunkSyntax(value)
+    endChan = int(tok[2])
+    if (not (0 <= endChan < 16384)) or (startChan >= endChan):
+        printChunkSyntax(value)
+    if len(tok) == 3:
+        nChan = 1
+    else:
+        nChan = int(tok[3])
+        if ((1+endChan-startChan) % nChan) != 0:
+            printChunkSyntax(value)
+    newChunks[nextNewChunkNumber] = (sourceChunkNumber, startChan, endChan, nChan)
+    nextNewChunkNumber += 1
+    return 1
+
 neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
 
 targetRx = -1
@@ -50,21 +98,6 @@ NaN = float('nan')
 totalPoints = 0
 totalZeros = 0
 newFormat = True
-
-def usage():
-    print 'Usage: ', sys.argv[0], ' path-to-SMA-data [options]'
-    print 'Options: (which must come *after* the path argument)'
-    print '\t -c m,n,o [--chunks=m,n,o]\tProcess only chunks m, n and o'
-    print '\t -h [--help]\t\t\tPrint this message and exit'
-    print '\t -l [--lower]\t\t\tProcess lower sideband only'
-    print '\t -p [--percent]\t\t\t%% to trim on band edge (default = %2.0f)' % (edgeTrimFraction*100.0)
-    print '\t -P [--PythonOnly]\t\tDo not use the C module "makevis"'
-    print '\t -r [--receiver]\t\tSpecify the receiver for multi-receiver tracks'
-    print '\t -R [--RxFix]\t\t\tForce the script to treat the track as a single receiver track'
-    print '\t -s [--silent]\t\t\tRun silently unless an error occurs'
-    print '\t -t [--trim]\t\t\tSet the amplitude at chunk edges to 0.0)'
-    print "\t -T\t\t\t\t-T n=m means use ant m's Tsys for ant n"
-    print '\t -u [--upper]\t\t\tProcess upper sideband only'
 
 def normalize0to360(angle):
     while angle >= 360.0:
@@ -549,6 +582,9 @@ parser.add_argument('dataset',           help='The data directory to process (i.
 parser.add_argument('-c', '--chunk',     help='Chunk(s) to process (comma separated list)',           type=csv)
 group1 = parser.add_mutually_exclusive_group()
 group1.add_argument('-l', '--lower',     help='Process lower sideband only',                  action='store_true')
+parser.add_argument('-n', '--newChunk', 
+                    help='Define a new chunk, built from an existing chunk with channel averaging and/or trimming. Syntax: -n hardwareChunk:startChan:endChan:numberChan',
+                    nargs='+', type=chunkSpec)
 parser.add_argument('-p', '--percent',   help='Percentage to trim on band edge (default = %0.0f) - implies -t' % (edgeTrimFraction*100.0),
                     type=float)
 group1.add_argument('-P', '--PythonOnly', help='Do not use the C module "makevis" - use pure Python (slow)', action='store_true')
@@ -558,6 +594,7 @@ parser.add_argument('-s', '--silent',    help='Run silently unless an error occu
 parser.add_argument('-t', '--trim',      help='Set the amplitude at chunk edges to 0.0', action='store_true')
 parser.add_argument('-T', '--Tsys',      help="-T n=m means use ant m's Tsys for ant n")
 group1.add_argument('-u', '--upper',     help='Process upper sideband only',                  action='store_true')
+parser.add_argument('-w', '--withoutChunk', help='Chunk(s) NOT to process (comma separated list)',           type=csv)
 
 args = parser.parse_args()
 dataSet = args.dataset
@@ -567,6 +604,13 @@ if args.chunk:
         if (chunk < 0) or (chunk > 50):
             print 'Illegal chunk number', chunk,'specified - aborting'
             sys.exit(-1)
+if args.withoutChunk:
+    for chunk in args.withoutChunk:
+        if (chunk < 0) or (chunk > 50):
+            print 'Illegal chunk number', chunk,'specified - aborting'
+            sys.exit(-1)
+        else:
+            chunkList.remove(chunk)
 if args.lower:
     sidebandList = [0]
 if args.upper:
@@ -615,21 +659,67 @@ if useMakevis:
 else:
     visFile = os.open(dataSet+'/sch_read', os.O_RDONLY)
     visMap = mmap.mmap(visFile, 0, prot=mmap.PROT_READ);
+for band in newChunks:
+    bandList.append(band)
+    chunkList.append(band)
 for band in bandList:
     for sb in range(2):
         if (band in chunkList) and (sb in sidebandList):
+            if band in newChunks:
+                fakeChunk = True
+            else:
+                fakeChunk = False
             if sb == 0:
                 sideBand = 'Lower'
                 blDict = blDictL
                 blTsysDict = blTsysDictL
                 spSmallDict = spSmallDictL
-                lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 - 52.0e6
             else:
                 sideBand = 'Upper'
                 blDict = blDictU
                 blTsysDict = blTsysDictU
                 spSmallDict = spSmallDictU
-                lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - 52.0e6
+            if fakeChunk:
+                if sb == 0:
+                    startCh = float(newChunks[band][1])
+                    endCh   = float(newChunks[band][2])
+                    nCh     = spSmallDict[newChunks[band][0]][0]
+                    midCh = startCh + (endCh - startCh)/2.0
+                    nChNew  = 1.0+endCh-startCh
+                    freqInc = float(newChunks[band][3]-1)/2.0
+                    centerFSky = spSmallDict[newChunks[band][0]][2] + (midCh - nCh*0.5)*spSmallDict[newChunks[band][0]][1]
+                    lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5  - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
+
+                else:
+                    startCh = float(newChunks[band][1])
+                    endCh   = float(newChunks[band][2])
+                    nCh     = spSmallDict[newChunks[band][0]][0]
+                    midCh = startCh + (endCh - startCh)/2.0
+                    nChNew  = 1.0+endCh-startCh
+                    freqInc = float(newChunks[band][3]-1)/2.0
+                    centerFSky = spSmallDict[newChunks[band][0]][2] - (midCh - nCh*0.5)*spSmallDict[newChunks[band][0]][1]
+                    lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5  - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
+
+                originalNChan = spSmallDict[newChunks[band][0]][0]
+                spSmallDict[band] = (int(nChNew/newChunks[band][3]), spSmallDict[newChunks[band][0]][1]*newChunks[band][3], 
+                                     centerFSky, spSmallDict[newChunks[band][0]][3], originalNChan)
+                keyList = []
+                for key, value in spBigDict.iteritems():
+                    if key[0] == newChunks[band][0]:
+                        keyList.append((key, value))
+                for key in keyList:
+                    spBigDict[(band, key[0][1])] = key[1]
+            else:
+                if band < 49:
+                    if sb == 0:
+                        lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 - 52.0e6
+                    else:
+                        lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - 52.0e6
+                else:
+                    if sb == 0:
+                        lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 - spSmallDict[band][1]*spSmallDict[band][0]*0.5
+                    else:
+                        lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - spSmallDict[band][1]*spSmallDict[band][0]*0.5
 
             ###
             ### Make the Primary HDU
@@ -976,7 +1066,10 @@ for band in bandList:
             scanNo = 0
             blPos = 0
             if verbose:
-                print 'Creating UV_DATA table for band ', band, sideBand, ' with ', spSmallDict[band][0], ' channels'
+                if fakeChunk:
+                    print 'Creating UV_DATA table for synthetic band ', band, sideBand, ' with ', (1+newChunks[band][2]-newChunks[band][1])/newChunks[band][3], ' channels'
+                else:
+                    print 'Creating UV_DATA table for band ', band, sideBand, ' with ', spSmallDict[band][0], ' channels'
             uList        = []
             vList        = []
             wList        = []
@@ -1069,10 +1162,16 @@ for band in bandList:
                                 else:
                                     weight = spBigDict[(band, bl)][1]
                                 if useMakevis:
-                                    matrixEntry = makevis.convert(nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder)
+                                    if fakeChunk:
+                                        matrixEntry = makevis.convert(nChannels, spSmallDict[band][4], scale, dataoff, newFormat, weight, False, firstGoodChannel, lastGoodChannel, reverseChannelOrder, newChunks[band][3], newChunks[band][1]/newChunks[band][3], newChunks[band][2]/newChunks[band][3])
+                                    else:
+                                        matrixEntry = makevis.convert(nChannels, nChannels, scale, dataoff, newFormat, weight, trimEdges, firstGoodChannel, lastGoodChannel, reverseChannelOrder, 1, 0, nChannels-1)
                                     if rightRx:
                                         matrixList.append(matrixEntry)
                                 else:
+                                    if fakeChunk:
+                                        print 'Making synthetic chunks without makevis is not yet supported - aborting'
+                                        sys.exit(-1)
                                     if newFormat:
                                         dataoff += 2
                                     else:

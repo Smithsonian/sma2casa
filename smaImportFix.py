@@ -5,18 +5,33 @@ import pylab as pl
 import os
 from math import pi,floor
 import pyfits as fits
+import glob
 
 useSMAScanNumbers = False
 
 default(importfitsidi)
 default(tflagdata)
-sidebandsToProcess = ['Lower', 'Upper']
+sidebandsToProcess = []
+files = glob.glob('tempFITS-IDI*')
+bandList=[]
+for b in files:
+    band=int(b[b.find('.band')+5:])
+    bandList.append(band)
+
+lower = glob.glob('*Lower*')
+upper = glob.glob('*Upper*')
+if len(lower) > 0:
+    sidebandsToProcess.append('Lower')
+if len(upper) > 0:
+    sidebandsToProcess.append('Upper')
+
+
 # Parameters for flagdata:
 
 for sideband in sidebandsToProcess:
     # First figure out which chunks need to be processed
     chunksToProcess = []
-    for i in range(51):
+    for i in range(max(bandList)+1):
         try:
             testFile = open('./tempFITS-IDI%s.band%d' % (sideband, i))
             print 'Chunk s%02d FITS-IDI file is present, will process' % (i)

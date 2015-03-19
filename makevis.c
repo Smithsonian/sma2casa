@@ -1,4 +1,4 @@
-#include "/sma/SMAusers/taco/anaconda/pkgs/python-2.7.6-1/include/python2.7/Python.h"
+#include "/opt/cfpython/anaconda2/include/python2.7/Python.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -92,10 +92,10 @@ static PyObject *makevis_scaleexp(PyObject *self, PyObject *args)
 static PyObject *makevis_convert(PyObject *self, PyObject *args)
 {
   static int firstCall = TRUE;
-  long int offset, offsetInc;
-  int nPoints, newFormat, i, trim, first, last, reverse;
-  int real, imag;
-  double scale, weight, fReal, fImag;
+  long int offset, offsetInc, smallOffsetInc;
+  int nPoints, newFormat, i, j, trim, first, last, reverse, chanAve, startChan, endChan, originalNPoints;
+  int real = 0, imag = 0;
+  double scale, weight, fReal, fImag, fChanAve;
   static PyObject *list;
   PyObject *num, *pyWeight;
 
@@ -104,58 +104,78 @@ static PyObject *makevis_convert(PyObject *self, PyObject *args)
   else
     Py_DECREF(list);
 
-  if (!PyArg_ParseTuple(args, "idlidiiii",
-			&nPoints, &scale, &offset, &newFormat, &weight, &trim, &first, &last, &reverse))
+  if (!PyArg_ParseTuple(args, "iidlidiiiiiii",
+			&nPoints, &originalNPoints, &scale, &offset, &newFormat, &weight, &trim, &first, &last, &reverse, &chanAve, &startChan, &endChan)) {
+    printf("NULL return 1\n");
     return NULL;
+  }
+  /* printf("%d %d %f %ld %d %f %d %d %d %d %d %d %d\n", nPoints, originalNPoints, scale, offset, newFormat, weight, trim, first, last, reverse, chanAve, startChan, endChan); */
+	 
   if (newFormat)
     offset += 2;
   else
     offset += 10;
   list = PyList_New(3*nPoints);
-  if (!list)
+  if (!list) {
+    printf("NULL return 2\n");
     return NULL;
+  }
   pyWeight = PyFloat_FromDouble(weight);
   if (!pyWeight) {
     Py_DECREF(list);
+    printf("NULL return 3\n");
     return NULL;
   }
   if (reverse) {
-    offset += (nPoints-1)*4;
-    offsetInc = -4;
+    offset += (originalNPoints - startChan*chanAve - 1)*4;
+    smallOffsetInc = -4;
   } else {
-    offsetInc = 4;
+    offset += startChan*4*chanAve;
+    smallOffsetInc = 4;
   }
-  for (i = 0; i < nPoints; i++) {
+  offsetInc = chanAve*smallOffsetInc;
+  fChanAve = (double)chanAve;
+  /* printf("startChan = %d, endChan = %d\n", startChan, endChan); */
+  for (i = startChan; i <= endChan; i++) {
+    /* printf("i = %d\n", i); */
     if ((weight <= 0.0) || (trim && ((i < first) || (i > last)))) {
       fReal = fImag = 0.0;
     } else {
-      if (newFormat) {
-	real = *((unsigned short *)&mapping[offset]);
-	imag = *((unsigned short *)&mapping[offset+2]);
-      } else {
-	real = (mapping[offset]<<8) + mapping[offset+1];
-	imag = (mapping[offset+2]<<8) + mapping[offset+3];
+      fReal = fImag = 0.0;
+      for (j = 0; j < chanAve; j++) {
+	if (newFormat) {
+	  real = (float)(*((unsigned short *)&mapping[offset + smallOffsetInc*j]));
+	  imag = (float)(*((unsigned short *)&mapping[offset+2 + smallOffsetInc*j]));
+	} else {
+	  real = (float)((mapping[offset + smallOffsetInc*j]<<8) + mapping[offset+1 + smallOffsetInc*j]);
+	  imag = (float)((mapping[offset+2 + smallOffsetInc*j]<<8) + mapping[offset+3 + smallOffsetInc*j]);
+	}
+	if (real > 32767)
+	  real -= 65536;
+	if (imag > 32767)
+	  imag -= 65536;
+	fReal += (double)real;
+	fImag += (double)imag;
       }
-      if (real > 32767)
-	real -= 65536;
-      if (imag > 32767)
-	imag -= 65536;
-      fReal = ((double)real)*scale;
-      fImag = ((double)-imag)*scale;
+      fReal = fReal*scale/fChanAve;
+      fImag = fImag*scale/fChanAve;
     }
     num = PyFloat_FromDouble(fReal);
     if (!num) {
       Py_DECREF(list);
+      printf("NULL return 4\n");
       return NULL;
     }
-    PyList_SET_ITEM(list, 3*i, num);
+    PyList_SET_ITEM(list, 3*(i-startChan), num);
     num = PyFloat_FromDouble(fImag);
     if (!num) {
       Py_DECREF(list);
+      printf("NULL return 5\n");
       return NULL;
     }
-    PyList_SET_ITEM(list, 3*i + 1, num);
-    PyList_SET_ITEM(list, 3*i + 2, pyWeight);
+    /* printf("i = %d, 3*i+1 = %d, offset = %ld, inc = %ld\n", i, 3*i + 1, offset, offsetInc); */
+    PyList_SET_ITEM(list, 3*(i-startChan) + 1, num);
+    PyList_SET_ITEM(list, 3*(i-startChan) + 2, pyWeight);
     offset += offsetInc;
   }
   return Py_BuildValue("O", list);
