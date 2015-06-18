@@ -37,6 +37,8 @@ def printChunkSyntax(value):
 newChunks = {}
 nextNewChunkNumber = 51
 
+sWARMForwardChunks = (49,)
+
 def chunkSpec(value):
     global newChunks, nextNewChunkNumber
 
@@ -690,10 +692,10 @@ for band in bandList:
                     centerFSky = spSmallDict[newChunks[band][0]][2] + (midCh - nCh*0.5)*spSmallDict[newChunks[band][0]][1]
                     if (newChunks[band][0]) < 49:
                         lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5 - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
-                    elif (newChunks[band][0]) == 49:
-                        lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5 + spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5
+                    elif newChunks[band][0] in sWARMForwardChunks:
+                        lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5 + spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
                     else:
-                        lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5 - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5
+                        lowestFSky = spSmallDict[newChunks[band][0]][2] - spSmallDict[newChunks[band][0]][1]*0.5 - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
                 else:
                     startCh = float(newChunks[band][1])
                     endCh   = float(newChunks[band][2])
@@ -704,10 +706,10 @@ for band in bandList:
                     centerFSky = spSmallDict[newChunks[band][0]][2] - (midCh - nCh*0.5)*spSmallDict[newChunks[band][0]][1]
                     if (newChunks[band][0]) < 49:
                         lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5  - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
-                    elif (newChunks[band][0]) == 49:
-                        lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5 - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5
+                    elif newChunks[band][0] in sWARMForwardChunks:
+                        lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5 - spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
                     else:
-                        lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5 + spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5
+                        lowestFSky = spSmallDict[newChunks[band][0]][2] + spSmallDict[newChunks[band][0]][1]*0.5 + spSmallDict[newChunks[band][0]][1]*spSmallDict[newChunks[band][0]][0]*0.5 + (startCh+freqInc)*abs(spSmallDict[newChunks[band][0]][1])
 
                 originalNChan = spSmallDict[newChunks[band][0]][0]
                 spSmallDict[band] = (int(nChNew/newChunks[band][3]), spSmallDict[newChunks[band][0]][1]*newChunks[band][3], 
@@ -724,7 +726,7 @@ for band in bandList:
                         lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 - 52.0e6
                     else:
                         lowestFSky = spSmallDict[band][2] + spSmallDict[band][1]*0.5 - 52.0e6
-                elif band == 49:
+                elif band in sWARMForwardChunks:
                     if sb == 0:
                         lowestFSky = spSmallDict[band][2] - spSmallDict[band][1]*0.5 + spSmallDict[band][1]*spSmallDict[band][0]*0.5
                     else:
