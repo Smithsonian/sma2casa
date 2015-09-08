@@ -86,6 +86,8 @@ blTsysDictU = {}
 sourceDict = {}
 maxScan = 100000000000
 maxWeight = 0.01
+fieldDict = {}
+sourceList = []
 numberOfBaselines = 0
 antennaList = []
 swappingTsys = False
@@ -153,9 +155,10 @@ def makeDouble(data):
 
 def read(dataDir):
     global bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict, targetRx, receiverName, fixRx
-    global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines
+    global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines, sourceList
     global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency, projectPI
 
+    nameList = []
     # Check that the directory contains all the required files
     if verbose:
         print 'checking that the needed files exist in ', dataDir
@@ -574,7 +577,13 @@ def read(dataDir):
             epoch     =  makeFloat(data[rec*inRecLen + 120:])
             size      =  makeFloat(data[rec*inRecLen + 128:])
         inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
-                         rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size)
+                         rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size, weightDict[inhid])
+        fieldKey = (souid, round(offx), round(offy))
+        if ((not (fieldKey in fieldDict)) and (weightDict[inhid] > 0.0)):
+            fieldDict[fieldKey] = (codesDict['source'][isource], offx, offy, rar, decr)
+            if codesDict['source'][isource] not in nameList:
+                nameList.append(codesDict['source'][isource])
+                sourceList.append((codesDict['source'][isource], rar, decr))
         if (souid not in sourceDict) and (weightDict[inhid] > 0.0):
                 sourceDict[souid] = (codesDict['source'][isource], rar, decr)
 
@@ -654,6 +663,13 @@ if verbose:
         if a != tsysMapping[a]:
             print 'Antenna %d will use the Tsys from antenna %d' % (a, tsysMapping[a])
 read(dataSet)
+#for key in sorted(fieldDict, key=lambda key: fieldDict[key][0]):
+#    print key, ':', fieldDict[key]
+sourceTable = open('sourceTable', 'w')
+if len(sourceList) > 0:
+    for i in range(len(sourceList)):
+        print >>sourceTable, i, sourceList[i][0], sourceList[i][1], sourceList[i][2]
+sourceTable.close()
 for line in open(dataSet+'/projectInfo'):
     projectPI = line.strip()
 if useMakevis:
@@ -864,23 +880,32 @@ for band in bandList:
             vdList   = []
             restList = []
             validSourceNumbers = []
-            for sKey in sourceDict:
-                source = int(sKey)
-                if not source in validSourceNumbers:
-                    validSourceNumbers.append(source)
+
+            fieldMapping = {}
+            source = 1
+            for fKey in sorted(fieldDict):
+                fieldMapping[fKey] = source
+                fSource = int(fKey[0])
+                if not fSource in validSourceNumbers:
+                    validSourceNumbers.append(fSource)
                 iDList.append(source)
-                nameList.append(sourceDict[source][0])
+                nameList.append(fieldDict[fKey][0])
                 qualList.append(0)
                 calList.append('    ')
                 freqList.append(1)
                 fluxList.append(0.0)
-                rAList.append(sourceDict[source][1]*180.0/pi)
-                decList.append(sourceDict[source][2]*180.0/pi)
+                rAList.append(fieldDict[fKey][3]*180.0/pi)
+                decList.append(fieldDict[fKey][4]*180.0/pi)
                 eqList.append('J2000')
                 velList.append(inDict[0][8]*1000.0)
                 vtList.append('LSR')
                 vdList.append('RADIO')
                 restList.append(lowestFSky)
+                source += 1
+
+#            print 'fieldDict =',fieldDict
+#            print 'fieldMapping =', fieldMapping
+
             c1  = fits.Column(name='SOURCE_ID',   format='1J',  array=iDList  )
             c2  = fits.Column(name='SOURCE',      format='16A', array=nameList)
             c3  = fits.Column(name='QUAL',        format='1J',  array=qualList)
@@ -1141,11 +1166,15 @@ for band in bandList:
                                     timeList.append(inDict[scanNo][7]/24.0)
                                     baselineList.append(256*blDict[bl][15] + blDict[bl][16])
                                     arrayList.append(1)
-                                    if inDict[scanNo][14] in validSourceNumbers:
-                                        sourceList.append(inDict[scanNo][14])
+                                    if (inDict[scanNo][14] in validSourceNumbers) and (inDict[scanNo][25] > 0.0):
+                                        thisSource = inDict[scanNo][14]
+                                        intX = round(inDict[scanNo][17])
+                                        intY = round(inDict[scanNo][18])
+                                        fKey = (thisSource, intX, intY)
+                                        sourceList.append(fieldMapping[fKey])
                                     else:
-                                        print 'Source %d is not in valid list - substituting %d' % (inDict[scanNo][14],
-                                                                                                    validSourceNumbers[0])
+#                                        print 'Source %d is not in valid list - substituting %d' % (inDict[scanNo][14],
+#                                                                                                    validSourceNumbers[0])
                                         sourceList.append(validSourceNumbers[0])
                                     freqList.append(1)
                                     intList.append(inDict[scanNo][12])

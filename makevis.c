@@ -167,7 +167,7 @@ static PyObject *makevis_convert(PyObject *self, PyObject *args)
       return NULL;
     }
     PyList_SET_ITEM(list, 3*(i-startChan), num);
-    num = PyFloat_FromDouble(fImag);
+    num = PyFloat_FromDouble(-fImag);
     if (!num) {
       Py_DECREF(list);
       printf("NULL return 5\n");
