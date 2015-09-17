@@ -65,7 +65,7 @@ def chunkSpec(value):
     nextNewChunkNumber += 1
     return 1
 
-neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'tsys_read', 'projectInfo', 'eng_read')
+neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'projectInfo', 'eng_read')
 
 targetRx = -1
 fixRx = False # Set True to force the script to ignore receiver
@@ -167,6 +167,11 @@ def read(dataDir):
         if not needed in dirContents:
             print "The directory %s does not have a %s file - aborting" % (dataDir, needed)
             sys.exit(-1)
+
+    if 'tsys_read' in dirContents:
+        gotTsysFile = True
+    else:
+        gotTsysFile = False
 
     ###
     ### Determine if this is an old-format or new-format data file
@@ -337,7 +342,25 @@ def read(dataDir):
         print 'Reading eng_read'
     f = open(dataDir+'/eng_read', 'rb')
     fSize = os.path.getsize(dataDir+'/eng_read')
-    engRecLen = 196
+    if gotTsysFile:
+        engFormat = 'new'
+    else:
+        if ((fSize % 196) == 0) and ((fSize % 188) == 0):
+            print 'Unlucky eng_read size - must read the file to detect the format'
+            engFormat = '?'
+        elif (fSize % 196) == 0:
+            print 'New format eng_read file detected'
+            engFormat = 'new'
+        elif (fSize % 188) == 0:
+            print 'Old format eng_read file detected'
+            engFormat = 'old'
+        else:
+            print 'Corrupted eng_read file detected - must abort'
+            sys.exit(-1)
+    if engFormat == 'old':
+        engRecLen = 188
+    else:
+        engRecLen = 196
     nEngRecords = fSize/engRecLen
     for rec in range(16):
         data = f.read(engRecLen)
@@ -350,56 +373,105 @@ def read(dataDir):
             else:
                 print 'Illegal antenna (%d) or pad (%d) detected - this is not a very important error' % (ant, pad)
 
-    ###
-    ### Pull the Tsys info out of tsys_read
-    ###
-    if newFormat:
-        tsysFile = os.open(dataDir+'/tsys_read', os.O_RDONLY)
-        tsysMap = mmap.mmap(tsysFile, 0, prot=mmap.PROT_READ);
-        for bl in blDictL:
-            ant1Tsys4to6 = makeFloat(tsysMap[blDictL[bl][17]+12:blDictL[bl][17]+16])
-            ant1Tsys6to8 = makeFloat(tsysMap[blDictL[bl][17]+28:blDictL[bl][17]+32])
-            ant2Tsys4to6 = makeFloat(tsysMap[blDictL[bl][18]+12:blDictL[bl][18]+16])
-            ant2Tsys6to8 = makeFloat(tsysMap[blDictL[bl][18]+28:blDictL[bl][18]+32])
-            blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
-        for bl in blDictU:
-            ant1Tsys4to6 = makeFloat(tsysMap[blDictU[bl][17]+16:blDictU[bl][17]+20])
-            ant1Tsys6to8 = makeFloat(tsysMap[blDictU[bl][17]+32:blDictU[bl][17]+36])
-            ant2Tsys4to6 = makeFloat(tsysMap[blDictU[bl][18]+16:blDictU[bl][18]+20])
-            ant2Tsys6to8 = makeFloat(tsysMap[blDictU[bl][18]+32:blDictU[bl][18]+36])
-            blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
-    else: # Old format file
-        if verbose:
-            print 'Processing old-format Tsys data'
-        antLowDict  = {}
-        antHighDict = {}
-        f = open(dataDir+'/tsys_read', 'rb')
-        fSize = os.path.getsize(dataDir+'/tsys_read')
-        tsysRecLen = 400
-        nTsysRecords = fSize/tsysRecLen
-        for rec in range(nTsysRecords):
-            if ((rec % 10000) == 0) and verbose:
-                print '\t processing record %d of %d (%2.0f%% done)' % (rec, nBlRecords, 100.0*float(rec)/float(nBlRecords))
-                sys.stdout.flush()
-            data = f.read(tsysRecLen)
-            if len(data) == tsysRecLen:
-                inhid    =   makeInt(data[  0:], 4)
-                iAnt     =   makeInt(data[ 14:], 2)
-                tsysLow  = makeFloat(data[ 16:])
-                tsysHigh = makeFloat(data[208:])
-                if (inhid, iAnt) not in antLowDict:
-                    antLowDict[(inhid, iAnt)]  = tsysLow
-                    antHighDict[(inhid, iAnt)] = tsysHigh
+    if gotTsysFile:
+        ###
+        ### Pull the Tsys info out of tsys_read
+        ###
+        if newFormat:
+            tsysFile = os.open(dataDir+'/tsys_read', os.O_RDONLY)
+            tsysMap = mmap.mmap(tsysFile, 0, prot=mmap.PROT_READ);
+            for bl in blDictL:
+                ant1Tsys4to6 = makeFloat(tsysMap[blDictL[bl][17]+12:blDictL[bl][17]+16])
+                ant1Tsys6to8 = makeFloat(tsysMap[blDictL[bl][17]+28:blDictL[bl][17]+32])
+                ant2Tsys4to6 = makeFloat(tsysMap[blDictL[bl][18]+12:blDictL[bl][18]+16])
+                ant2Tsys6to8 = makeFloat(tsysMap[blDictL[bl][18]+28:blDictL[bl][18]+32])
+                blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+            for bl in blDictU:
+                ant1Tsys4to6 = makeFloat(tsysMap[blDictU[bl][17]+16:blDictU[bl][17]+20])
+                ant1Tsys6to8 = makeFloat(tsysMap[blDictU[bl][17]+32:blDictU[bl][17]+36])
+                ant2Tsys4to6 = makeFloat(tsysMap[blDictU[bl][18]+16:blDictU[bl][18]+20])
+                ant2Tsys6to8 = makeFloat(tsysMap[blDictU[bl][18]+32:blDictU[bl][18]+36])
+                blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+            tsysMap.close()
+            os.close(tsysFile)
+        else: # Old format file
+            if verbose:
+                print 'Processing old-format Tsys data'
+            antLowDict  = {}
+            antHighDict = {}
+            f = open(dataDir+'/tsys_read', 'rb')
+            fSize = os.path.getsize(dataDir+'/tsys_read')
+            tsysRecLen = 400
+            nTsysRecords = fSize/tsysRecLen
+            for rec in range(nTsysRecords):
+                if ((rec % 10000) == 0) and verbose:
+                    print '\t processing record %d of %d (%2.0f%% done)' % (rec, nBlRecords, 100.0*float(rec)/float(nBlRecords))
+                    sys.stdout.flush()
+                data = f.read(tsysRecLen)
+                if len(data) == tsysRecLen:
+                    inhid    =   makeInt(data[  0:], 4)
+                    iAnt     =   makeInt(data[ 14:], 2)
+                    tsysLow  = makeFloat(data[ 16:])
+                    tsysHigh = makeFloat(data[208:])
+                    if (inhid, iAnt) not in antLowDict:
+                        antLowDict[(inhid, iAnt)]  = tsysLow
+                        antHighDict[(inhid, iAnt)] = tsysHigh
+            for bl in blDictL:
+                inhid = blDictL[bl][0]
+                ant1  = blDictL[bl][15]
+                ant2  = blDictL[bl][16]
+                blTsysDictL[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
+            for bl in blDictU:        
+                inhid = blDictU[bl][0]
+                ant1  = blDictU[bl][15]
+                ant2  = blDictU[bl][16]
+                blTsysDictU[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
+    else: # There is no tsys_read file
+        print 'This dataset has no tsys_read file - Tsys will be pulled from the eng_read file if it exists'
+        if not ('eng_read' in dirContents):
+            print 'There is no eng_read file in the dataset - cannot determine Tsys, must abort.'
+            sys.exit(-1)
+        engFile = os.open(dataDir+'/eng_read', os.O_RDONLY)
+        engMap = mmap.mmap(engFile, 0, prot=mmap.PROT_READ);
+        if engFormat == '?':
+            for i in xrange(engSize/196):
+                if not (1 <= makeInt(engMap[i*196:], 4) <= 10):
+                    print 'New format guess for wrong at record', i
+                    engFormat = 'old'
+                    break
+            else:
+                engFormat = 'new'
+            print 'Deduced format', engFormat
+        engTsysDict = {}
+        for i in xrange(engSize/engRecLen):
+            ant   = makeInt(engMap[i*engRecLen:], 4)
+            inhid = makeInt(engMap[i*engRecLen + 20:], 4)
+            tsys1 = makeDouble(engMap[i*engRecLen + 172:])
+            if engFormat == 'old':
+                tsys2 = tsys1
+            else:
+                tsys2 = makeDouble(engMap[i*engRecLen + 180:])
+            engTsysDict[(ant, inhid)] = (2.0*tsys1, 2.0*tsys2)
         for bl in blDictL:
             inhid = blDictL[bl][0]
             ant1  = blDictL[bl][15]
             ant2  = blDictL[bl][16]
-            blTsysDictL[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
-        for bl in blDictU:        
+            ant1Tsys4to6 = engTsysDict[(ant1, inhid)][0]
+            ant1Tsys6to8 = engTsysDict[(ant1, inhid)][1]
+            ant2Tsys4to6 = engTsysDict[(ant2, inhid)][0]
+            ant2Tsys6to8 = engTsysDict[(ant2, inhid)][1]
+            blTsysDictL[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+        for bl in blDictU:
             inhid = blDictU[bl][0]
             ant1  = blDictU[bl][15]
             ant2  = blDictU[bl][16]
-            blTsysDictU[bl] = (antLowDict[(inhid, ant1)], antHighDict[(inhid, ant1)], antLowDict[(inhid, ant2)], antHighDict[(inhid, ant2)])
+            ant1Tsys4to6 = engTsysDict[(ant1, inhid)][0]
+            ant1Tsys6to8 = engTsysDict[(ant1, inhid)][1]
+            ant2Tsys4to6 = engTsysDict[(ant2, inhid)][0]
+            ant2Tsys6to8 = engTsysDict[(ant2, inhid)][1]
+            blTsysDictU[bl] = (ant1Tsys4to6, ant1Tsys6to8, ant2Tsys4to6, ant2Tsys6to8)
+        engMap.close()
+        os.close(engFile)
     if swappingTsys:
         print 'Swapping Tsys values'
         # Make a mapping dictionary that maps (intergration, antenna) to Tsys
