@@ -65,7 +65,7 @@ def chunkSpec(value):
     nextNewChunkNumber += 1
     return 1
 
-neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'projectInfo', 'eng_read')
+neededFiles = ('antennas', 'bl_read', 'codes_read', 'in_read', 'sch_read', 'sp_read', 'eng_read')
 
 targetRx = -1
 fixRx = False # Set True to force the script to ignore receiver
@@ -433,6 +433,7 @@ def read(dataDir):
             sys.exit(-1)
         engFile = os.open(dataDir+'/eng_read', os.O_RDONLY)
         engMap = mmap.mmap(engFile, 0, prot=mmap.PROT_READ);
+        engSize = os.path.getsize(dataDir+'/eng_read')
         if engFormat == '?':
             for i in xrange(engSize/196):
                 if not (1 <= makeInt(engMap[i*196:], 4) <= 10):
@@ -742,8 +743,14 @@ if len(sourceList) > 0:
     for i in range(len(sourceList)):
         print >>sourceTable, i, sourceList[i][0], sourceList[i][1], sourceList[i][2]
 sourceTable.close()
-for line in open(dataSet+'/projectInfo'):
-    projectPI = line.strip()
+
+try:
+    for line in open(dataSet+'/projectInfo'):
+        projectPI = line.strip()
+except IOError:
+    print "There is no projectInfo file - I'll be unable to set the PI name properly"
+    projectPI = 'Unknown PI'
+
 if useMakevis:
     visFileLen = makevis.open(dataSet+'/sch_read')
 else:
