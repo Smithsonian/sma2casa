@@ -324,7 +324,8 @@ for sideband in sidebandsToProcess:
         print 'Making a SYSCAL table for '+mSFileName
         tb.fromfits(tablename=mSFileName+'/SYSCAL',fitsfile=fitsidifile,whichhdu=5,nomodify=False)
         tb.clearlocks()
-    # os.system('rm '+mSFileName+'/SYSCAL/table.lock')
+        tb.close()
+        os.system('rm '+mSFileName+'/SYSCAL/table.lock')
 
     #Delete the FITS-IDI files
     os.system('rm ./tempFITS-IDI%s.band*' % sideband)

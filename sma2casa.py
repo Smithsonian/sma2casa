@@ -736,8 +736,6 @@ if verbose:
         if a != tsysMapping[a]:
             print 'Antenna %d will use the Tsys from antenna %d' % (a, tsysMapping[a])
 read(dataSet)
-#for key in sorted(fieldDict, key=lambda key: fieldDict[key][0]):
-#    print key, ':', fieldDict[key]
 sourceTable = open('sourceTable', 'w')
 if len(sourceList) > 0:
     for i in range(len(sourceList)):
@@ -981,9 +979,6 @@ for band in bandList:
                 vdList.append('RADIO')
                 restList.append(lowestFSky)
                 source += 1
-
-#            print 'fieldDict =',fieldDict
-#            print 'fieldMapping =', fieldMapping
 
             c1  = fits.Column(name='SOURCE_ID',   format='1J',  array=iDList  )
             c2  = fits.Column(name='SOURCE',      format='16A', array=nameList)
@@ -1251,6 +1246,12 @@ for band in bandList:
                                         intY = round(inDict[scanNo][18])
                                         fKey = (thisSource, intX, intY)
                                         sourceList.append(fieldMapping[fKey])
+                                    elif inDict[scanNo][25] <= 0.0:
+                                        thisSource = inDict[scanNo][14]
+                                        intX = round(inDict[scanNo][17])
+                                        intY = round(inDict[scanNo][18])
+                                        fKey = (thisSource, intX, intY)
+                                        sourceList.append(fieldMapping[fKey])                                        
                                     else:
 #                                        print 'Source %d is not in valid list - substituting %d' % (inDict[scanNo][14],
 #                                                                                                    validSourceNumbers[0])
