@@ -1251,10 +1251,11 @@ for band in bandList:
                                         intX = round(inDict[scanNo][17])
                                         intY = round(inDict[scanNo][18])
                                         fKey = (thisSource, intX, intY)
-                                        sourceList.append(fieldMapping[fKey])                                        
+                                        try:
+                                            sourceList.append(fieldMapping[fKey])                                        
+                                        except KeyError:
+                                            sourceList.append(validSourceNumbers[0])
                                     else:
-#                                        print 'Source %d is not in valid list - substituting %d' % (inDict[scanNo][14],
-#                                                                                                    validSourceNumbers[0])
                                         sourceList.append(validSourceNumbers[0])
                                     freqList.append(1)
                                     intList.append(inDict[scanNo][12])
