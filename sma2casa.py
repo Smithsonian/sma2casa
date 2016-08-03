@@ -19,7 +19,7 @@ def printChunkSyntax(value):
     print 'Syntax error on chunk specification', value, '- aborting'
     print 'New chunks must be specified with the following syntax:'
     print 'hardwareChunk:startChan:endChan:numberAve'
-    print 'Where hardware is the correlator hardware cunk number (1 through 50)'
+    print 'Where hardware is the correlator hardware cunk number (1 through 52)'
     print 'startChan is the first channel of hardwareChunk to be included in the new chunk'
     print 'endChan is the last channel of hardwareChunk to be included in the new chunk'
     print 'and numberAve is the number of channels to vector average when producing'
@@ -35,7 +35,7 @@ def printChunkSyntax(value):
     sys.exit(-1)
 
 newChunks = {}
-nextNewChunkNumber = 51
+nextNewChunkNumber = 53
 
 sWARMForwardChunks = (49,)
 
@@ -47,7 +47,7 @@ def chunkSpec(value):
     if len(tok) < 3:
         printChunkSyntax(value)
     sourceChunkNumber = int(tok[0])
-    if not (1 <= sourceChunkNumber <= 50):
+    if not (1 <= sourceChunkNumber <= 52):
         printChunkSyntax(value)
     startChan = int(tok[1])
     if not (0 <= startChan < 16384):
@@ -94,7 +94,7 @@ swappingTsys = False
 tsysMapping = range(0,11)
 trimEdges = False
 edgeTrimFraction = 0.1 # Fraction on each edge of a spectral chunk to flag bad
-chunkList = range(51)
+chunkList = range(53)
 sidebandList = [0, 1]
 pseudoContinuumFrequency = {}
 verbose = True
@@ -685,12 +685,12 @@ dataSet = args.dataset
 if args.chunk:
     chunkList = args.chunk
     for chunk in chunkList:
-        if (chunk < 0) or (chunk > 50):
+        if (chunk < 0) or (chunk > 52):
             print 'Illegal chunk number', chunk,'specified - aborting'
             sys.exit(-1)
 if args.withoutChunk:
     for chunk in args.withoutChunk:
-        if (chunk < 0) or (chunk > 50):
+        if (chunk < 0) or (chunk > 52):
             print 'Illegal chunk number', chunk,'specified - aborting'
             sys.exit(-1)
         else:
@@ -757,6 +757,7 @@ else:
 for band in newChunks:
     bandList.append(band)
     chunkList.append(band)
+bandList = sorted(bandList)
 for band in bandList:
     for sb in range(2):
         if (band in chunkList) and (sb in sidebandList):
@@ -839,7 +840,7 @@ for band in bandList:
             header['groups'] = True
             header['gcount'] = 0
             header['pcount'] = 0
-            if (band == 0) and ((49 in bandList) or (50 in bandList)):
+            if (band == 0) and ((49 in bandList) or (50 in bandList) or (51 in bandList) or (52 in bandList)):
                 header['correlat'] = 'SMA-Hybrid'
             elif band < 49:
                 header['correlat'] = 'SMA-Legacy'
