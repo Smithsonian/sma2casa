@@ -672,7 +672,7 @@ parser.add_argument('-n', '--newChunk',
 parser.add_argument('-p', '--percent',   help='Percentage to trim on band edge (default = %0.0f) - implies -t' % (edgeTrimFraction*100.0),
                     type=float)
 group1.add_argument('-P', '--PythonOnly', help='Do not use the C module "makevis" - use pure Python (slow)', action='store_true')
-parser.add_argument('-r', '--receiver',  help='Specify the receiver (required for multi-receiver tracks)', type=int, choices=[230,345,400,650])
+parser.add_argument('-r', '--receiver',  help='Specify the receiver (required for multi-receiver tracks)', type=int, choices=[230, 240, 345, 400])
 parser.add_argument('-R', '--RxFix',     help='Force the script to treat the track as a single receiver track', action='store_true')
 parser.add_argument('-s', '--silent',    help='Run silently unless an error occurs', action='store_true')
 parser.add_argument('-t', '--trim',      help='Set the amplitude at chunk edges to 0.0', action='store_true')
