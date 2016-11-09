@@ -78,6 +78,7 @@ spBigDict = {}
 antennas = {}
 codesDict = {}
 projectPI = 'Dr. John Q Project'
+lowestInhid = 1000000
 inDict = {}
 blDictU = {}
 blDictL = {}
@@ -156,7 +157,7 @@ def makeDouble(data):
 def read(dataDir):
     global bandList, antennas, codesDict, inDict, blDictL, blDictU, padsDict, targetRx, receiverName, fixRx
     global spSmallDictL, spSmallDictU, spBigDict, sourceDict, maxWeight, numberOfBaselines, sourceList
-    global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency, projectPI
+    global antennaList, blTsysDictL, blTsysDictU, newFormat, pseudoContinuumFrequency, projectPI, lowestInhid
 
     nameList = []
     # Check that the directory contains all the required files
@@ -651,6 +652,8 @@ def read(dataDir):
             size      =  makeFloat(data[rec*inRecLen + 128:])
         inDict[inhid] = (traid, inhid, az, el, hA, iut, iref_time, dhrs, vc, sx, sy, sz,
                          rinteg, proid, souid, isource, ivrad, offx, offy, ira, idec, rar, decr, epoch, size, weightDict[inhid])
+        if inhid < lowestInhid:
+            lowestInhid = inhid
         fieldKey = (souid, round(offx), round(offy))
         if ((not (fieldKey in fieldDict)) and (weightDict[inhid] > 0.0)):
             fieldDict[fieldKey] = (codesDict['source'][isource], offx, offy, rar, decr)
@@ -975,7 +978,7 @@ for band in bandList:
                 rAList.append(fieldDict[fKey][3]*180.0/pi)
                 decList.append(fieldDict[fKey][4]*180.0/pi)
                 eqList.append('J2000')
-                velList.append(inDict[0][8]*1000.0)
+                velList.append(inDict[0+lowestInhid][8]*1000.0)
                 vtList.append('LSR')
                 vdList.append('RADIO')
                 restList.append(lowestFSky)
